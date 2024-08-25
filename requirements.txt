@@ -1,7 +1,7 @@
-accelerate=0.33.0
-datasets=2.20.0
-descript-audio-codec=1.0.0=pypi_0
-descript-audiotools=0.7.2=pypi_0
-tqdm=4.66.5
-wandb=0.17.6
-transformers=4.44.0
+accelerate==0.33.0
+datasets==2.20.0
+descript-audio-codec==1.0.0
+descript-audiotools==0.7.2
+tqdm==4.66.5
+wandb==0.17.6
+transformers==4.44.0
