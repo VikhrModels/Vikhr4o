@@ -57,7 +57,8 @@ end_audio_token = config["end_audio_token"]
 end_sequence_token = config["end_sequence_token"]
 n_special_tokens = config["n_special_tokens"]
 
-n_codebooks = config["n_codebooks"]
+n_codebooks_tts = config["n_codebooks_tts"]
+n_codebooks_asr = config["n_codebooks_asr"]
 max_seq_length = config["max_seq_length"]
 
 load_processed = config["load_processed"]
@@ -74,6 +75,11 @@ class Vikhr4oDataset(Dataset):
         self.dataset = dataset
         self.tokenizer = tokenizer
         self.asr = asr
+        
+        if asr:
+            self.n_codebooks = n_codebooks_asr
+        else:
+            self.n_codebooks = n_codebooks_tts
 
         self.soa = tokenizer(start_audio_token, return_tensors="pt")["input_ids"][
             :, -1:
@@ -111,20 +117,15 @@ class Vikhr4oDataset(Dataset):
         text_input_tokens = text_tokenized["input_ids"].to(device)
         codes = self.quantize(row)
 
-        if self.asr:
-            raw_audio_tokens = codes[:1]
-            audio_input_tokens = raw_audio_tokens.contiguous().view(1, -1)
-        else:
-            raw_audio_tokens = codes[:n_codebooks]
-            audio_input_tokens = raw_audio_tokens.t().contiguous().view(1, -1)
+        raw_audio_tokens = codes[:self.n_codebooks]
+        audio_input_tokens = raw_audio_tokens.t().contiguous().view(1, -1)
 
         audio_length = min(
             max_seq_length - text_input_tokens.shape[-1] - n_special_tokens,
             audio_input_tokens.shape[-1],
         )
 
-        if not self.asr:
-            audio_length -= audio_length % n_codebooks
+        audio_length -= audio_length % self.n_codebooks
 
         padding_size = (
             max_seq_length

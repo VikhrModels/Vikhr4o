@@ -8,7 +8,8 @@ end_audio_token: "<eoa>"
 end_sequence_token: "<eos>"
 n_special_tokens: 3
 
-n_codebooks: 3
+n_codebooks_tts: 3
+n_codebooks_asr: 1
 max_seq_length: 2048
 
 load_processed: False
