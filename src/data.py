@@ -16,7 +16,7 @@ class Vikhr4oDataset(Dataset):
         row = self.dataset[idx]
         text = row["text"]
         text_tokenized = self.tokenizer(text, return_tensors="pt")
-        text_input_tokens = text_tokenized["input_ids"].to(self.device)
+        text_input_tokens = text_tokenized["input_ids"]
 
         return {
             "text_input_tokens": text_input_tokens,
