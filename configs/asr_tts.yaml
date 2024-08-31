@@ -1,0 +1,47 @@
+base_model: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+save_dir: "./results_asr_mixed_different_tokens"
+
+data: "librispeech"  # Options: "parler-tts", "tedlium", "librispeech", "synthetic"
+
+start_audio_token: "<soa>"
+end_audio_token: "<eoa>"
+end_sequence_token: "<eos>"
+n_special_tokens: 3
+
+n_codebooks: 3
+max_seq_length: 2048
+
+load_processed: False
+path_to_processed: "./data/processed/"
+path_to_cache: "./data/cache/"
+quantize_before_training: False
+
+allow_tf32: True
+
+# Freezing settings
+freeze_emb: False
+freeze_ln: False
+freeze_attn: False
+freeze_ff: True
+freeze_ff_layers: [5,6,7,8,9,12,23,14,18,19,20,0,25]
+freeze_other: False
+
+# Quantizer settings
+quantizer_config_path: "./audiotokenizer/speechtokenizer_hubert_avg_config.json"
+quantizer_ckpt_path: "./audiotokenizer/SpeechTokenizer.pt"
+
+# Training settings
+train_batch_size: 1
+eval_batch_size: 2
+learning_rate: 5e-4
+gradient_accumulation_steps: 8
+lr_scheduler_type: "cosine"
+num_train_epochs: 5
+num_warmup_steps: 10
+checkpointing_steps: 1000
+logging_steps: 20
+weight_decay: 0.1
+max_grad_norm: 0.25
+
+# Logging settings
+wandb_project_name: "vikhr4o-llama-tiny"
