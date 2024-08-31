@@ -9,6 +9,7 @@ from src.utils import (
     prepare_synthetic,
     save_checkpoint
 )
+from src.data import Vikhr4oDataset
 
 import math
 import random
@@ -70,40 +71,6 @@ checkpointing_steps = int(config['checkpointing_steps'])
 max_grad_norm = float(config['max_grad_norm'])
 torch.backends.cuda.matmul.allow_tf32 = config["allow_tf32"]
 torch.backends.cudnn.allow_tf32 = config["allow_tf32"]
-
-
-class Vikhr4oDataset(Dataset):
-    def __init__(self, dataset, tokenizer, device, asr=False):
-        self.dataset = dataset
-        self.tokenizer = tokenizer
-        self.asr = asr
-
-        self.soa = tokenizer(start_audio_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
-        self.eoa = tokenizer(end_audio_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
-        self.eos = tokenizer(end_sequence_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
-
-        self.n_original_tokens = len(tokenizer) - 1024
-
-    def __len__(self):
-        return len(self.dataset)
-
-    def __getitem__(self, idx):
-        row = self.dataset[idx]
-        text = row["text"]
-        text_tokenized = self.tokenizer(text, return_tensors="pt")
-        text_input_tokens = text_tokenized["input_ids"].to(device)
-
-        return {
-            "text_input_tokens": text_input_tokens,
-            "audio_data": row["audio"]["array"],
-            "sampling_rate": row["audio"]["sampling_rate"],
-        }
 
 
 

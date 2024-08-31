@@ -10,15 +10,8 @@ def freeze_entire_model(model):
         p.requires_grad = False
     return model
 
-
-def freeze(
-    model,
-    freeze_emb=False,
-    freeze_ln=False,
-    freeze_attn=False,
-    freeze_ff=True,
-    freeze_ff_layers=[
-        5,
+'''
+5,
         6,
         7,
         8,
@@ -31,8 +24,18 @@ def freeze(
         20,
         0,
         25,
+'''
+
+def freeze(
+    model,
+    freeze_emb=False,
+    freeze_ln=True,
+    freeze_attn=True,
+    freeze_ff=True,
+    freeze_ff_layers=[
+        
     ],  # None means all or no layers, depending on freeze_ff
-    freeze_other=False,
+    freeze_other=True,
 ):
     if freeze_ff_layers is not None and not isinstance(freeze_ff_layers, (list, set)):
         raise ValueError("freeze_ff_layers must be a list or set of layer indices")
@@ -176,20 +179,20 @@ def save_checkpoint(
 
 
 def prepare_librispeech():
-    raw = load_dataset("openslr/librispeech_asr", "clean", cache_dir=".")
+    raw = load_dataset("openslr/librispeech_asr", "clean",trust_remote_code=True, cache_dir=".")
     processed = raw.remove_columns(["chapter_id"])
     processed = processed.cast_column("speaker_id", Value("string"))
     return processed
 
 
 def prepare_tedlium():
-    raw = load_dataset("LIUM/tedlium", "release1", cache_dir=".")
+    raw = load_dataset("LIUM/tedlium", "release1", trust_remote_code=True, cache_dir=".")
     processed = raw.remove_columns(["gender"])
     return processed
 
 
 def prepare_parler_tts():
-    raw_mls = load_dataset("parler-tts/mls_eng", cache_dir="/mnt/storage")
+    raw_mls = load_dataset("parler-tts/mls_eng", trust_remote_code=True, cache_dir="/mnt/storage")
     processed_mls = raw_mls.remove_columns(
         ["begin_time", "end_time", "speaker_id", "book_id", "audio_duration"]
     )
@@ -199,7 +202,7 @@ def prepare_parler_tts():
 
 
 def prepare_synthetic():
-    raw = load_dataset("homebrewltd/instruction-speech-encodec-v1", cache_dir=".")
+    raw = load_dataset("homebrewltd/instruction-speech-encodec-v1",trust_remote_code=True,  cache_dir=".")
     processed = raw.remove_columns(["answer", "length"])
     processed = processed.rename_column("prompt", "text")
 
