@@ -142,7 +142,7 @@ def train(
             
             text_input_tokens = batch["text_input_tokens"].to(device)
             raw_audio_tokens = codes[:n_codebooks]
-            print(raw_audio_tokens)
+            
             audio_input_tokens = raw_audio_tokens.t().contiguous().view(1, -1)
             audio_length = min(
                 max_seq_length - text_input_tokens.shape[-1] - n_special_tokens,
@@ -158,13 +158,7 @@ def train(
             padding = torch.zeros((1, padding_size), dtype=torch.int64, device=device)
            
             
-            #soa = soa.squeeze(0)  # Shape becomes [1]
-            #eoa = eoa.squeeze(0)  # Shape becomes [1]
-            #eos = eos.squeeze(0)  # Shape becomes [1]
-            #print(audio_input_tokens.shape)
-            print("text_input_tokens", text_input_tokens.shape)
-            print('audio_input_tokens', audio_input_tokens[:, :audio_length].shape)
-            print('eos', eos.shape)
+            
             tokens = torch.cat(
                 [
                     padding,
