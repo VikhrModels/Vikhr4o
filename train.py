@@ -30,7 +30,8 @@ from transformers import (
     default_data_collator,
     get_scheduler,
 )
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedDataParallelKwargs
+
 import argparse
 import yaml
 from speechtokenizer import SpeechTokenizer
@@ -207,19 +208,21 @@ def train(
                     eos,
                 ],
                 dim=1,
-            ).squeeze(0)
+            )
 
             attention_mask = torch.cat(
                 [padding, torch.ones((1, max_seq_length - padding_size), device=device)],
                 dim=1,
-            ).squeeze(0)
+            )
 
             batch = {
                 "input_ids": tokens,
                 "attention_mask": attention_mask,
                 "labels": tokens.clone(),
             }
-
+            
+            print('tokens' ,tokens.shape)
+            print('attention_mask' ,attention_mask.shape)
             # Forward pass
             outputs = model(**batch)
             loss = outputs.loss
@@ -363,6 +366,7 @@ if __name__ == "__main__":
         gradient_accumulation_steps=int(config["gradient_accumulation_steps"]),
         mixed_precision="no",
         log_with="wandb",
+        kwargs_handlers=[DistributedDataParallelKwargs(find_unused_parameters=True)],
     )
     device = accelerator.device
     os.makedirs(save_dir, exist_ok=True)
@@ -382,11 +386,11 @@ if __name__ == "__main__":
     config_path = config["quantizer_config_path"]
     ckpt_path = config["quantizer_ckpt_path"]
     quantizer = SpeechTokenizer.load_from_checkpoint(config_path, ckpt_path)
-    quantizer.eval()
+    quantizer.eval().to(device)
 
-    for n, child in quantizer.named_children():
-        child.to(device)
-        child = freeze_entire_model(child)
+    #for n, child in quantizer.named_children():
+    #    child.to(device)
+    #    child = freeze_entire_model(child)
 
     codebook_size = quantizer.quantizer.bins
 
