@@ -1,0 +1,10 @@
+compute_environment: LOCAL_MACHINE
+distributed_type: DEEPSPEED
+deepspeed_config:
+ deepspeed_config_file: configs/zero2.json
+fsdp_config: {}
+machine_rank: 0
+num_machines: 1
+num_processes: 2
+gpu_ids: 0,1
+use_cpu: false

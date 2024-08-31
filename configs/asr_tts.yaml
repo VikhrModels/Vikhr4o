@@ -33,7 +33,7 @@ quantizer_ckpt_path: "./audiotokenizer/SpeechTokenizer.pt"
 
 # Training settings
 train_batch_size: 1
-eval_batch_size: 2
+eval_batch_size: 1
 learning_rate: 5e-4
 gradient_accumulation_steps: 8
 lr_scheduler_type: "cosine"
