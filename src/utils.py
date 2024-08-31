@@ -2,6 +2,7 @@ import torch
 from audiotools import AudioSignal
 import os
 from datasets import load_dataset
+from datasets import Value, DatasetDict
 
 
 def freeze_entire_model(model):
@@ -172,3 +173,34 @@ def save_checkpoint(
         tokenizer.save_pretrained(path)
         torch.save(optimizer.state_dict(), os.path.join(path, "optimizer.pt"))
         torch.save(scheduler.state_dict(), os.path.join(path, "scheduler.pt"))
+
+
+def prepare_librispeech():
+    raw = load_dataset("openslr/librispeech_asr", "clean", cache_dir=".")
+    processed = raw.remove_columns(["chapter_id"])
+    processed = processed.cast_column("speaker_id", Value("string"))
+    return processed
+
+
+def prepare_tedlium():
+    raw = load_dataset("LIUM/tedlium", "release1", cache_dir=".")
+    processed = raw.remove_columns(["gender"])
+    return processed
+
+
+def prepare_parler_tts():
+    raw_mls = load_dataset("parler-tts/mls_eng", cache_dir="/mnt/storage")
+    processed_mls = raw_mls.remove_columns(
+        ["begin_time", "end_time", "speaker_id", "book_id", "audio_duration"]
+    )
+    processed_mls = processed_mls.rename_column("transcript", "text")
+
+    return processed_mls
+
+
+def prepare_synthetic():
+    raw = load_dataset("homebrewltd/instruction-speech-encodec-v1", cache_dir=".")
+    processed = raw.remove_columns(["answer", "length"])
+    processed = processed.rename_column("prompt", "text")
+
+    return processed
