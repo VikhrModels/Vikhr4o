@@ -62,13 +62,13 @@ class Vikhr4oDatasetVoiceDescription(Dataset):
         }
 
 
-def load_data(datasets: list[str], tokenizer) -> tuple[Dataset, Dataset]:
+def load_data(datasets: list[str], tokenizer, cache_dir: str) -> tuple[Dataset, Dataset]:
 
     train_datasets = []
     val_datasets = []
 
     for dataset in datasets:
-        train_ds, val_ds = DATASET_2_LOAD_FUNCTION[dataset]
+        train_ds, val_ds = DATASET_2_LOAD_FUNCTION[dataset](cache_dir)
 
         if "with_description" in dataset:
             train_tts = Vikhr4oDatasetVoiceDescription(train_ds, tokenizer, False)

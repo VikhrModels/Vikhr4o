@@ -82,7 +82,7 @@ def test_audio_generation(model, batch, n, quantizer, pad_tokens, n_original_tok
             audio_file = os.path.join(save_dir, "audio")
             os.makedirs(audio_file, exists_ok=True)
             audio_file = os.path.join(audio_file, f"audio_{ind + 1}.wav")
-            aduio.write(audio_file)
+            audio.write(audio_file)
             audios.append(audio_file)
         except:
             print("No audio generated.")
@@ -188,9 +188,6 @@ def train(
                 "attention_mask": attention_mask,
                 "labels": tokens.clone(),
             }
-            
-            print('tokens', tokens.shape)
-            print('attention_mask', attention_mask.shape)
 
             # Forward pass
             outputs = model(**batch)
@@ -366,7 +363,7 @@ if __name__ == "__main__":
     model.resize_token_embeddings(len(tokenizer))
 
     if not load_processed:
-        train_dataset, val_dataset = load_data(data, tokenizer)
+        train_dataset, val_dataset = load_data(data, tokenizer, path_to_cache)
     else:
         train_dataset = load_from_disk(os.path.join(path_to_processed, "train"))
         val_dataset = load_from_disk(os.path.join(path_to_processed, "val"))

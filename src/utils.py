@@ -29,13 +29,13 @@ def freeze_entire_model(model):
 
 
 def freeze(
-    model,
-    freeze_emb=False,
-    freeze_ln=True,
-    freeze_attn=True,
-    freeze_ff=True,
-    freeze_ff_layers=[],  # None means all or no layers, depending on freeze_ff
-    freeze_other=True,
+        model,
+        freeze_emb=False,
+        freeze_ln=True,
+        freeze_attn=True,
+        freeze_ff=True,
+        freeze_ff_layers=[],  # None means all or no layers, depending on freeze_ff
+        freeze_other=True,
 ):
     if freeze_ff_layers is not None and not isinstance(freeze_ff_layers, (list, set)):
         raise ValueError("freeze_ff_layers must be a list or set of layer indices")
@@ -124,21 +124,21 @@ def decode_audio(
     return AudioSignal(audio.detach().cpu().numpy(), quantizer.sample_rate)
 
 
-def prepare_librispeech() -> tuple[Dataset, Dataset]:
-    raw = load_dataset("openslr/librispeech_asr", "clean", cache_dir=".")
+def prepare_librispeech(cache_dir) -> tuple[Dataset, Dataset]:
+    raw = load_dataset("openslr/librispeech_asr", "clean", cache_dir=cache_dir)
     processed = raw.remove_columns(["chapter_id"])
     processed = processed.cast_column("speaker_id", Value("string"))
     return processed["train.100"], processed["validation"]
 
 
-def prepare_tedlium() -> tuple[Dataset, Dataset]:
-    raw = load_dataset("LIUM/tedlium", "release1", cache_dir=".")
+def prepare_tedlium(cache_dir) -> tuple[Dataset, Dataset]:
+    raw = load_dataset("LIUM/tedlium", "release1", cache_dir)
     processed = raw.remove_columns(["gender"])
     return processed["train"], processed["validation"]
 
 
-def prepare_parler_tts() -> tuple[Dataset, Dataset]:
-    raw_mls = load_dataset("parler-tts/mls_eng", cache_dir=".")
+def prepare_parler_tts(cache_dir) -> tuple[Dataset, Dataset]:
+    raw_mls = load_dataset("parler-tts/mls_eng", cache_dir)
     processed_mls = raw_mls.remove_columns(
         ["begin_time", "end_time", "speaker_id", "book_id", "audio_duration"]
     )
@@ -147,26 +147,30 @@ def prepare_parler_tts() -> tuple[Dataset, Dataset]:
     return processed_mls["train"], processed_mls["dev"]
 
 
-def prepare_synthetic() -> tuple[Dataset, Dataset]:
-    raw = load_dataset("homebrewltd/instruction-speech-encodec-v1", cache_dir=".")
+def prepare_synthetic(cache_dir) -> tuple[Dataset, Dataset]:
+    raw = load_dataset("homebrewltd/instruction-speech-encodec-v1", cache_dir)
     processed = raw.remove_columns(["answer", "length"])
     processed = processed.rename_column("prompt", "text")
 
     return processed["train"], processed["test"]
 
 
-def prepare_parler_tts_with_description() -> tuple[Dataset, Dataset]:
+def prepare_parler_tts_with_description(cache_dir) -> tuple[Dataset, Dataset]:
+    audio = load_dataset("parler-tts/libritts_r_filtered", "clean", cache_dir=cache_dir)
+    train_audio, val_audio = audio["train.clean.100"], audio["dev.clean"]
+
     columns = ["id", "text", "path", "text_description"]
-    raw = load_dataset("parler-tts/libritts-r-filtered-speaker-descriptions", cache_dir=".")
-    processed = raw.remove_columns(list(set(raw.column_names) - set(columns)))
+    raw = load_dataset("parler-tts/libritts-r-filtered-speaker-descriptions", 'clean', cache_dir=cache_dir)
+    processed = raw.remove_columns(list(set(raw.column_names["dev.clean"]) - set(columns)))
+    train_text, val_text = processed["train.clean.100"], processed["dev.clean"]
 
-    processed = processed.map(path_2_audio)
+    assert train_audio["id"] == train_text["id"] and val_audio["id"] == val_text["id"]
 
-    return processed["train"], processed["test"]
-
-
-def path_2_audio(row):
-    return {"audio": AudioSignal(row["path"])}
+    audio_features_train = train_audio["audio"]
+    audio_features_val = val_audio["audio"]
+    train_text = train_text.map(lambda x, i: {"audio": audio_features_train[i]}, with_indices=True)
+    val_text = val_text.map(lambda x, i: {"audio": audio_features_val[i]}, with_indices=True)
+    return train_text, val_text
 
 
 def get_last_checkpoint(save_dir):
@@ -177,7 +181,7 @@ def get_last_checkpoint(save_dir):
 
 
 def save_checkpoint(
-    model, accelerator, tokenizer, optimizer, scheduler, save_dir, checkpointing_steps
+        model, accelerator, tokenizer, optimizer, scheduler, save_dir, checkpointing_steps
 ):
     accelerator.wait_for_everyone()
     state = model.state_dict()
