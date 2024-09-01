@@ -1,33 +1,23 @@
 from src.utils import (
     freeze,
-    freeze_entire_model,
     get_audio_padding_tokens,
     decode_audio,
-    prepare_librispeech,
-    prepare_tedlium,
-    prepare_parler_tts,
-    prepare_synthetic,
     save_checkpoint
 )
-from src.data import Vikhr4oDataset
+from src.data import load_data
 
 import math
 import random
-import wandb
 
 from tqdm import tqdm
-from multiprocess import set_start_method
 
 import torch
-from torch.utils.data import DataLoader, Dataset, ConcatDataset
-from datasets import load_dataset, load_from_disk, Audio, concatenate_datasets
-from datasets import Value, DatasetDict
-
+from torch.utils.data import DataLoader
+from datasets import load_from_disk
 
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
-    TrainingArguments,
     default_data_collator,
     get_scheduler,
 )
@@ -60,7 +50,8 @@ end_audio_token = config["end_audio_token"]
 end_sequence_token = config["end_sequence_token"]
 n_special_tokens = config["n_special_tokens"]
 
-n_codebooks = int(config["n_codebooks_tts"])
+n_codebooks_tts = int(config["n_codebooks_tts"])
+n_codebooks_asr = int(config["n_codebooks_asr"])
 max_seq_length = int(config["max_seq_length"])
 
 load_processed = bool(config["load_processed"])
@@ -71,7 +62,6 @@ checkpointing_steps = int(config['checkpointing_steps'])
 max_grad_norm = float(config['max_grad_norm'])
 torch.backends.cuda.matmul.allow_tf32 = config["allow_tf32"]
 torch.backends.cudnn.allow_tf32 = config["allow_tf32"]
-
 
 
 def test_audio_generation(model, batch, n, quantizer, pad_tokens, n_original_tokens):
@@ -111,7 +101,8 @@ def train(
     progress_bar,
     max_train_steps,
     quantizer,
-    n_codebooks,
+    n_codebooks_tts,
+    n_codebooks_asr,
     max_seq_length,
     n_special_tokens,
     device,
@@ -131,15 +122,20 @@ def train(
 
     for step, batch in enumerate(dataloader):
         with accelerator.accumulate(model):
+            # TODO: won't work for batch_size > 1, need to change
             # Quantization
             audio_data, sample_rate = batch["audio_data"], batch["sampling_rate"]
+
+            if batch["asr"][0]:
+                n_codebooks = n_codebooks_asr
+            else:
+                n_codebooks = n_codebooks_tts
             
             audio = torch.tensor(audio_data).view(1, 1, len(audio_data[0])).float()
             audio = audio.to(device)
             codes = quantizer.encode(audio)
             codes = codes.squeeze(1)
-            
-            
+
             text_input_tokens = batch["text_input_tokens"].to(device)
             raw_audio_tokens = codes[:n_codebooks]
             
@@ -157,19 +153,30 @@ def train(
             )
             padding = torch.zeros((1, padding_size), dtype=torch.int64, device=device)
            
-            
-            
-            tokens = torch.cat(
-                [
-                    padding,
-                    text_input_tokens.squeeze(1),
-                    soa,
-                    audio_input_tokens[:, :audio_length],
-                    eoa,
-                    eos,
-                ],
-                dim=1,
-            )
+            if batch["asr"][0]:
+                tokens = torch.cat(
+                    [
+                        padding,
+                        soa,
+                        audio_input_tokens[:, :audio_length],
+                        eoa,
+                        text_input_tokens.squeeze(1),
+                        eos,
+                    ],
+                    dim=1,
+                )
+            else:
+                tokens = torch.cat(
+                    [
+                        padding,
+                        text_input_tokens.squeeze(1),
+                        soa,
+                        audio_input_tokens[:, :audio_length],
+                        eoa,
+                        eos,
+                    ],
+                    dim=1,
+                )
 
             attention_mask = torch.cat(
                 [padding, torch.ones((1, max_seq_length - padding_size), device=device)],
@@ -182,8 +189,9 @@ def train(
                 "labels": tokens.clone(),
             }
             
-            print('tokens' ,tokens.shape)
-            print('attention_mask' ,attention_mask.shape)
+            print('tokens', tokens.shape)
+            print('attention_mask', attention_mask.shape)
+
             # Forward pass
             outputs = model(**batch)
             loss = outputs.loss
@@ -349,10 +357,6 @@ if __name__ == "__main__":
     quantizer = SpeechTokenizer.load_from_checkpoint(config_path, ckpt_path)
     quantizer.eval().to(device)
 
-    #for n, child in quantizer.named_children():
-    #    child.to(device)
-    #    child = freeze_entire_model(child)
-
     codebook_size = quantizer.quantizer.bins
 
     tokenizer.add_tokens([f"<audio_token_{i}>" for i in range(codebook_size)])
@@ -362,43 +366,10 @@ if __name__ == "__main__":
     model.resize_token_embeddings(len(tokenizer))
 
     if not load_processed:
-        print("Loadiing data")
-        if data == "tedlium":
-            dataset = prepare_tedlium()
-
-            train_data = dataset["train"]
-            val_data = dataset["validation"]
-
-        elif data == "parler-tts":
-            dataset = prepare_parler_tts()
-
-            train_data = dataset["train"]
-            val_data = dataset["dev"]
-
-        elif data == "librispeech":
-            dataset = prepare_librispeech()
-
-            train_data = dataset["train.100"]
-            val_data = dataset["validation"]
-
-        elif data == "synthetic":
-            dataset = prepare_synthetic()["train"]
-
-            splits = dataset.train_test_split(test_size=0.1)
-            train_data = splits["train"]
-            val_data = splits["test"]
+        train_dataset, val_dataset = load_data(data, tokenizer)
     else:
-        train_data = load_from_disk(os.path.join(path_to_processed, "train"))
-        val_data = load_from_disk(os.path.join(path_to_processed, "val"))
-
-    train_dataset_tts = Vikhr4oDataset(train_data, tokenizer, device = device)
-    train_dataset_asr = Vikhr4oDataset(train_data, tokenizer, device = device, asr=True)
-
-    val_dataset_tts = Vikhr4oDataset(val_data, tokenizer, device = device)
-    val_dataset_asr = Vikhr4oDataset(val_data, tokenizer, device = device, asr=True)
-
-    train_dataset = ConcatDataset([train_dataset_tts, train_dataset_asr])
-    val_dataset = ConcatDataset([val_dataset_tts, val_dataset_asr])
+        train_dataset = load_from_disk(os.path.join(path_to_processed, "train"))
+        val_dataset = load_from_disk(os.path.join(path_to_processed, "val"))
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -432,7 +403,7 @@ if __name__ == "__main__":
         },
     ]
     optimizer = torch.optim.AdamW(
-        optimizer_grouped_parameters, lr=float(config["learning_rate"]), #fused=True
+        optimizer_grouped_parameters, lr=float(config["learning_rate"]),  # fused=True
     )
 
     num_update_steps_per_epoch = math.ceil(
@@ -503,7 +474,8 @@ if __name__ == "__main__":
             progress_bar,
             max_train_steps,
             quantizer,
-            n_codebooks,
+            n_codebooks_tts,
+            n_codebooks_asr,
             max_seq_length,
             n_special_tokens, 
             device
@@ -517,8 +489,10 @@ if __name__ == "__main__":
             completed_steps,
             train_loss,
             quantizer,
-            padding_tokens,
             n_tokens + 1,
+            max_seq_length,
+            n_special_tokens,
+            device
         )
 
     save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler,  save_dir, epoch)

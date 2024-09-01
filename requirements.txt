@@ -1,7 +1,7 @@
 accelerate==0.33.0
 datasets==2.20.0
-descript-audio-codec==1.0.0
 descript-audiotools==0.7.2
+speechtokenizer==1.0.1
 tqdm==4.66.5
 wandb==0.17.6
 transformers==4.44.0
