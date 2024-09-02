@@ -76,14 +76,19 @@ def load_data(datasets: list[str], tokenizer, cache_dir: str) -> tuple[Dataset, 
 
             val_tts = Vikhr4oDatasetVoiceDescription(val_ds, tokenizer, False)
             val_asr = Vikhr4oDatasetVoiceDescription(val_ds, tokenizer, True)
-        else:
-            train_tts = Vikhr4oDatasetBase(train_ds, tokenizer, False)
-            train_asr = Vikhr4oDatasetBase(train_ds, tokenizer, True)
 
-            val_tts = Vikhr4oDatasetBase(val_ds, tokenizer, False)
+            train_datasets.extend([train_tts, val_tts])
+        else:
+            if "synthetic" not in dataset:
+                train_tts = Vikhr4oDatasetBase(train_ds, tokenizer, False)
+                val_tts = Vikhr4oDatasetBase(val_ds, tokenizer, False)
+
+                train_datasets.extend([train_tts, val_tts])
+
+            train_asr = Vikhr4oDatasetBase(train_ds, tokenizer, True)
             val_asr = Vikhr4oDatasetBase(val_ds, tokenizer, True)
 
-        train_datasets.extend([train_tts, train_asr])
-        val_datasets.extend([val_tts, val_asr])
+        train_datasets.extend([train_asr])
+        val_datasets.extend([val_asr])
 
     return ConcatDataset(train_datasets), ConcatDataset(val_datasets)
