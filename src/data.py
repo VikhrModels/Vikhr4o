@@ -83,7 +83,8 @@ def load_data(datasets: list[str], tokenizer, cache_dir: str) -> tuple[Dataset, 
                 train_tts = Vikhr4oDatasetBase(train_ds, tokenizer, False)
                 val_tts = Vikhr4oDatasetBase(val_ds, tokenizer, False)
 
-                train_datasets.extend([train_tts, val_tts])
+                train_datasets.append(train_tts)
+                val_datasets.append(val_tts)
 
             train_asr = Vikhr4oDatasetBase(train_ds, tokenizer, True)
             val_asr = Vikhr4oDatasetBase(val_ds, tokenizer, True)
