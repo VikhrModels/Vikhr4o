@@ -151,8 +151,9 @@ def prepare_synthetic(cache_dir) -> tuple[Dataset, Dataset]:
     raw = load_dataset("homebrewltd/instruction-speech-encodec-v1", cache_dir)
     processed = raw.remove_columns(["prompt", "length"])
     processed = processed.rename_column("answer", "text")
+    splits = processed.train_test_split(test_size=0.1)
 
-    return processed["train"], processed["test"]
+    return splits["train"], splits["test"]
 
 
 def prepare_parler_tts_with_description(cache_dir) -> tuple[Dataset, Dataset]:
