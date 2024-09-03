@@ -21,7 +21,7 @@ from transformers import (
     default_data_collator,
     get_scheduler,
 )
-from accelerate import Accelerator, DistributedDataParallelKwargs
+from accelerate import Accelerator, DistributedDataParallelKwargs,InitProcessGroupKwargs
 
 import argparse
 import yaml
@@ -328,19 +328,21 @@ def eval(
 
 
 if __name__ == "__main__":
+    import datetime
+    timeout = datetime.timedelta(seconds=100000000)
     accelerator = Accelerator(
         gradient_accumulation_steps=int(config["gradient_accumulation_steps"]),
         mixed_precision="no",
         log_with="wandb",
-        kwargs_handlers=[DistributedDataParallelKwargs(find_unused_parameters=True)],
+        kwargs_handlers=[DistributedDataParallelKwargs(find_unused_parameters=True), InitProcessGroupKwargs(timeout=timeout)],
     )
     device = accelerator.device
     os.makedirs(save_dir, exist_ok=True)
     tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=path_to_cache)
     model = AutoModelForCausalLM.from_pretrained(
-        base_model, attn_implementation="sdpa", cache_dir=path_to_cache
+        base_model, attn_implementation="sdpa", torch_dtype=torch.bfloat16, cache_dir=path_to_cache
     )
-
+    model.gradient_checkpointing_enable()
     tokenizer.add_special_tokens(
         {"additional_special_tokens": [start_audio_token, end_audio_token]}
     )
@@ -373,11 +375,13 @@ if __name__ == "__main__":
         shuffle=True,
         collate_fn=default_data_collator,
         batch_size=int(config["train_batch_size"]),
+        num_workers=16
     )
     eval_dataloader = DataLoader(
         val_dataset,
         collate_fn=default_data_collator,
-        batch_size=int(config["eval_batch_size"]),
+        batch_size=int(config["eval_batch_size"]), 
+        num_workers=16
     )
 
     no_decay = ["bias", "layer_norm.weight"]
@@ -417,7 +421,7 @@ if __name__ == "__main__":
 
     (
         model,
-        optimizer,
+        optimizer, 
         train_dataloader,
         eval_dataloader,
         lr_scheduler,
@@ -460,6 +464,7 @@ if __name__ == "__main__":
     padding_tokens = get_audio_padding_tokens(quantizer, device)
     
     model = freeze(model)
+  
     for epoch in range(starting_epoch, num_train_epochs):
         train_loss, completed_steps = train(
             model,
