@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0,3 NCCL_IB_GID_INDEX=3 NCCL_P2P_DISABLE=1 NCCL_P2P_LEVEL=NVL PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256 \
-accelerate launch \
+CUDA_VISIBLE_DEVICES=0,1,2 NCCL_IB_GID_INDEX=3 NCCL_P2P_DISABLE=1 NCCL_P2P_LEVEL=NVL accelerate launch \
         --config_file configs/accelerate_multigpu.yaml \
+        --main_process_port 29000 \
         train.py --config configs/asr_tts.yaml
