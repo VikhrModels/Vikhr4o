@@ -132,13 +132,13 @@ def prepare_librispeech(cache_dir) -> tuple[Dataset, Dataset]:
 
 
 def prepare_tedlium(cache_dir) -> tuple[Dataset, Dataset]:
-    raw = load_dataset("LIUM/tedlium", "release1", cache_dir)
+    raw = load_dataset("LIUM/tedlium", "release1", cache_dir=cache_dir)
     processed = raw.remove_columns(["gender"])
     return processed["train"], processed["validation"]
 
 
 def prepare_parler_tts(cache_dir) -> tuple[Dataset, Dataset]:
-    raw_mls = load_dataset("parler-tts/mls_eng", cache_dir)
+    raw_mls = load_dataset("parler-tts/mls_eng", cache_dir=cache_dir)
     processed_mls = raw_mls.remove_columns(
         ["begin_time", "end_time", "speaker_id", "book_id", "audio_duration"]
     )
@@ -148,7 +148,7 @@ def prepare_parler_tts(cache_dir) -> tuple[Dataset, Dataset]:
 
 
 def prepare_synthetic(cache_dir) -> tuple[Dataset, Dataset]:
-    raw = load_dataset("homebrewltd/instruction-speech-encodec-v1", cache_dir)
+    raw = load_dataset("homebrewltd/instruction-speech-encodec-v1", cache_dir=cache_dir)
     processed = raw.remove_columns(["prompt", "length"])
     processed = processed.rename_column("answer", "text")
     splits = processed.train_test_split(test_size=0.1)
