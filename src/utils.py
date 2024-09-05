@@ -151,7 +151,7 @@ def prepare_synthetic(cache_dir) -> tuple[Dataset, Dataset]:
     raw = load_dataset("homebrewltd/instruction-speech-encodec-v1", cache_dir=cache_dir)
     processed = raw.remove_columns(["prompt", "length"])
     processed = processed.rename_column("answer", "text")
-    splits = processed.train_test_split(test_size=0.1)
+    splits = processed["train"].train_test_split(test_size=0.1)
 
     return splits["train"], splits["test"]
 
