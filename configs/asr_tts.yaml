@@ -2,6 +2,7 @@ base_model: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 save_dir: "./results_asr_mixed_different_tokens"
 
 data: ["librispeech", "parler_tts_with_description"]  # Options: "parler-tts", "tedlium", "librispeech", "synthetic"
+prepared_data_path: "Vikhrmodels/libri_parler_tts_quantized_en"
 
 start_audio_token: "<soa>"
 end_audio_token: "<eoa>"

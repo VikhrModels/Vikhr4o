@@ -187,6 +187,8 @@ def train(
                 dim=1,
             )
 
+            del audio, codes, raw_audio_tokens
+
             if tokens.shape[1] > max_seq_length:
                 continue
 
@@ -269,8 +271,6 @@ def eval(
             audio = audio.to(device)
             codes = quantizer.encode(audio)
             codes = codes.squeeze(1)
-            del audio
-            torch.cuda.empty_cache()
 
             text_input_tokens = batch["text_input_tokens"].to(device)
             raw_audio_tokens = codes[:n_codebooks]
@@ -305,6 +305,8 @@ def eval(
                 [padding, torch.ones((1, max_seq_length - padding_size), device=device)],
                 dim=1,
             ).squeeze(0)
+
+            del audio, codes, raw_audio_tokens
 
             if tokens.shape[1] > max_seq_length:
                 continue
