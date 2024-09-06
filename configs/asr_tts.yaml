@@ -11,6 +11,7 @@ n_special_tokens: 3
 n_codebooks_tts: 3
 n_codebooks_asr: 1
 max_seq_length: 2048
+raw_audio_length: 256000
 
 load_processed: False
 path_to_processed: "./data/processed/"

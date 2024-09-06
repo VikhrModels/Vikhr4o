@@ -53,6 +53,7 @@ n_special_tokens = config["n_special_tokens"]
 n_codebooks_tts = int(config["n_codebooks_tts"])
 n_codebooks_asr = int(config["n_codebooks_asr"])
 max_seq_length = int(config["max_seq_length"])
+raw_audio_length = int(config["raw_audio_length"])
 
 load_processed = bool(config["load_processed"])
 path_to_processed = config["path_to_processed"]
@@ -125,6 +126,9 @@ def train(
             # TODO: won't work for batch_size > 1, need to change
             # Quantization
             audio_data, sample_rate = batch["audio_data"], batch["sampling_rate"]
+
+            if audio_data.shape[-1] > raw_audio_length:
+                continue
 
             if batch["asr"][0]:
                 n_codebooks = n_codebooks_asr
@@ -217,7 +221,7 @@ def train(
             acc_loss = 0
 
             if completed_steps % checkpointing_steps == 0:
-                save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler, save_dir, completed_steps)
+                save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler, save_dir, checkpointing_steps)
 
             torch.cuda.empty_cache()
 
@@ -258,6 +262,9 @@ def eval(
         with torch.no_grad():
             # Quantization
             audio_data, sample_rate = batch["audio_data"], batch["sampling_rate"]
+            if audio_data.shape[-1] > raw_audio_length:
+                continue
+
             audio = torch.tensor(audio_data).view(1, 1, len(audio_data)).float()
             audio = audio.to(device)
             codes = quantizer.encode(audio)
@@ -503,4 +510,4 @@ if __name__ == "__main__":
             device
         )
 
-    save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler,  save_dir, epoch)
+    save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler,  save_dir, checkpointing_steps)
