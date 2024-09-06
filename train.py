@@ -183,6 +183,9 @@ def train(
                 dim=1,
             )
 
+            if tokens.shape[1] > max_seq_length:
+                continue
+
             batch = {
                 "input_ids": tokens,
                 "attention_mask": attention_mask,
@@ -295,6 +298,9 @@ def eval(
                 [padding, torch.ones((1, max_seq_length - padding_size), device=device)],
                 dim=1,
             ).squeeze(0)
+
+            if tokens.shape[1] > max_seq_length:
+                continue
 
             batch = {
                 "input_ids": tokens,
