@@ -1,4 +1,5 @@
 accelerate==0.33.0
+beartype==0.18.5
 datasets==2.20.0
 descript-audiotools==0.7.2
 speechtokenizer==1.0.1
