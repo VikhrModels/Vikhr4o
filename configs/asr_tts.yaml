@@ -1,22 +1,22 @@
 base_model: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-save_dir: "./results_asr_mixed_different_tokens"
+save_dir: "./results_voice_description_5_2"
 
-data: ["librispeech", "parler_tts_with_description"]  # Options: "parler-tts", "tedlium", "librispeech", "synthetic"
-prepared_data_path: "Vikhrmodels/libri_parler_tts_quantized_en"
+data: ["Vikhrmodels/librispeech_quantized", "Vikhrmodels/parler_tts_with_description_quantized"]
+prepared_data_path: "Vikhrmodels/parler_tts_with_description_quantized"
 
 start_audio_token: "<soa>"
 end_audio_token: "<eoa>"
 end_sequence_token: "<eos>"
 n_special_tokens: 3
 
-n_codebooks_tts: 3
-n_codebooks_asr: 1
-max_seq_length: 2048
+n_codebooks_tts: 5
+n_codebooks_asr: 2
+max_seq_length: 4096
 raw_audio_length: 256000
 
 load_processed: False
 path_to_processed: "./data/processed/"
-path_to_cache: "./data/cache/"
+path_to_cache: ".."
 quantize_before_training: False
 
 allow_tf32: True
@@ -30,8 +30,8 @@ freeze_ff_layers: [5,6,7,8,9,12,23,14,18,19,20,0,25]
 freeze_other: False
 
 # Quantizer settings
-quantizer_config_path: "./audiotokenizer/speechtokenizer_hubert_avg_config.json"
-quantizer_ckpt_path: "./audiotokenizer/SpeechTokenizer.pt"
+quantizer_config_path: "../audiotokenizer/speechtokenizer_hubert_avg_config.json"
+quantizer_ckpt_path: "../audiotokenizer/SpeechTokenizer.pt"
 
 # Training settings
 train_batch_size: 1

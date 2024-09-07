@@ -21,13 +21,15 @@ from transformers import (
     default_data_collator,
     get_scheduler,
 )
-from accelerate import Accelerator, DistributedDataParallelKwargs,InitProcessGroupKwargs
+from accelerate import Accelerator, DistributedDataParallelKwargs, InitProcessGroupKwargs
 
 import argparse
 import yaml
 from speechtokenizer import SpeechTokenizer
 import os
 
+from safetensors import safe_open
+from safetensors.torch import save_file
 
 # Parse arguments
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
@@ -93,111 +95,21 @@ def test_audio_generation(model, batch, n, quantizer, pad_tokens, n_original_tok
 
 
 def train(
-    model,
-    dataloader,
-    accelerator,
-    optimizer,
-    lr_scheduler,
-    completed_steps,
-    progress_bar,
-    max_train_steps,
-    quantizer,
-    n_codebooks_tts,
-    n_codebooks_asr,
-    max_seq_length,
-    n_special_tokens,
-    device,
+        model,
+        dataloader,
+        accelerator,
+        optimizer,
+        lr_scheduler,
+        completed_steps,
+        progress_bar,
+        max_train_steps,
 ):
     model.train()
     total_loss = 0
     acc_loss = 0
-    soa = tokenizer(start_audio_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
-    eoa = tokenizer(end_audio_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
-    eos = tokenizer(end_sequence_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
 
     for step, batch in enumerate(dataloader):
         with accelerator.accumulate(model):
-            # TODO: won't work for batch_size > 1, need to change
-            # Quantization
-            audio_data, sample_rate = batch["audio_data"], batch["sampling_rate"]
-
-            if audio_data.shape[-1] > raw_audio_length:
-                continue
-
-            if batch["asr"][0]:
-                n_codebooks = n_codebooks_asr
-            else:
-                n_codebooks = n_codebooks_tts
-            
-            audio = torch.tensor(audio_data).view(1, 1, len(audio_data[0])).float()
-            audio = audio.to(device)
-            codes = quantizer.encode(audio)
-            codes = codes.squeeze(1)
-
-            text_input_tokens = batch["text_input_tokens"].to(device)
-            raw_audio_tokens = codes[:n_codebooks]
-            
-            audio_input_tokens = raw_audio_tokens.t().contiguous().view(1, -1)
-            audio_length = min(
-                max_seq_length - text_input_tokens.shape[-1] - n_special_tokens,
-                audio_input_tokens.shape[-1],
-            )
-            audio_length -= audio_length % n_codebooks
-            padding_size = (
-                max_seq_length
-                - text_input_tokens.shape[-1]
-                - audio_length
-                - n_special_tokens
-            )
-            padding = torch.zeros((1, padding_size), dtype=torch.int64, device=device)
-           
-            if batch["asr"][0]:
-                tokens = torch.cat(
-                    [
-                        padding,
-                        soa,
-                        audio_input_tokens[:, :audio_length],
-                        eoa,
-                        text_input_tokens.squeeze(1),
-                        eos,
-                    ],
-                    dim=1,
-                )
-            else:
-                tokens = torch.cat(
-                    [
-                        padding,
-                        text_input_tokens.squeeze(1),
-                        soa,
-                        audio_input_tokens[:, :audio_length],
-                        eoa,
-                        eos,
-                    ],
-                    dim=1,
-                )
-
-            attention_mask = torch.cat(
-                [padding, torch.ones((1, max_seq_length - padding_size), device=device)],
-                dim=1,
-            )
-
-            del audio, codes, raw_audio_tokens
-
-            if tokens.shape[1] > max_seq_length:
-                continue
-
-            batch = {
-                "input_ids": tokens,
-                "attention_mask": attention_mask,
-                "labels": tokens.clone(),
-            }
-
             # Forward pass
             outputs = model(**batch)
             loss = outputs.loss
@@ -207,6 +119,8 @@ def train(
             acc_loss += last_loss
 
             accelerator.backward(loss)
+
+            del batch
 
         if accelerator.sync_gradients:
             accelerator.clip_grad_norm_(model.parameters(), max_grad_norm)
@@ -234,94 +148,28 @@ def train(
 
 
 def eval(
-    model,
-    dataloader,
-    accelerator,
-    epoch,
-    completed_steps,
-    train_loss,
-    quantizer,
-    n_codebooks,
-    max_seq_length,
-    n_special_tokens,
-    device,
+        model,
+        dataloader,
+        accelerator,
+        epoch,
+        completed_steps,
+        train_loss,
 ):
     model.eval()
     losses = []
-    soa = tokenizer(start_audio_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
-    eoa = tokenizer(end_audio_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
-    eos = tokenizer(end_sequence_token, return_tensors="pt")["input_ids"][
-            :, -1:
-        ].to(device)
-    
+
     eval_progress_bar = tqdm(dataloader, desc=f"Evaluating Epoch {epoch}", leave=False)
 
     for batch in eval_progress_bar:
         with torch.no_grad():
-            # Quantization
-            audio_data, sample_rate = batch["audio_data"], batch["sampling_rate"]
-            if audio_data.shape[-1] > raw_audio_length:
-                continue
-
-            audio = torch.tensor(audio_data).view(1, 1, len(audio_data)).float()
-            audio = audio.to(device)
-            codes = quantizer.encode(audio)
-            codes = codes.squeeze(1)
-
-            text_input_tokens = batch["text_input_tokens"].to(device)
-            raw_audio_tokens = codes[:n_codebooks]
-
-            audio_input_tokens = raw_audio_tokens.t().contiguous().view(1, -1)
-            audio_length = min(
-                max_seq_length - text_input_tokens.shape[-1] - n_special_tokens,
-                audio_input_tokens.shape[-1],
-            )
-            audio_length -= audio_length % n_codebooks
-            padding_size = (
-                max_seq_length
-                - text_input_tokens.shape[-1]
-                - audio_length
-                - n_special_tokens
-            )
-            padding = torch.zeros((1, padding_size), dtype=torch.int64, device=device)
-
-            tokens = torch.cat(
-                [
-                    padding,
-                    text_input_tokens,
-                    soa,
-                    audio_input_tokens[:, :audio_length],
-                    eoa,
-                    eos,
-                ],
-                dim=1,
-            ).squeeze(0)
-
-            attention_mask = torch.cat(
-                [padding, torch.ones((1, max_seq_length - padding_size), device=device)],
-                dim=1,
-            ).squeeze(0)
-
-            del audio, codes, raw_audio_tokens
-
-            if tokens.shape[1] > max_seq_length:
-                continue
-
-            batch = {
-                "input_ids": tokens,
-                "attention_mask": attention_mask,
-                "labels": tokens.clone(),
-            }
-
             # Forward pass
             outputs = model(**batch)
             loss = outputs.loss
             losses.append(accelerator.gather_for_metrics(loss.repeat(int(config["eval_batch_size"]))))
-    
+
+            del batch
+            torch.cuda.empty_cache()
+
     losses = torch.cat(losses)
     try:
         eval_loss = torch.mean(losses)
@@ -344,12 +192,14 @@ def eval(
 
 if __name__ == "__main__":
     import datetime
+
     timeout = datetime.timedelta(seconds=100000000)
     accelerator = Accelerator(
         gradient_accumulation_steps=int(config["gradient_accumulation_steps"]),
         mixed_precision="no",
         log_with="wandb",
-        kwargs_handlers=[DistributedDataParallelKwargs(find_unused_parameters=True), InitProcessGroupKwargs(timeout=timeout)],
+        kwargs_handlers=[DistributedDataParallelKwargs(find_unused_parameters=False),
+                         InitProcessGroupKwargs(timeout=timeout)],
     )
     device = accelerator.device
     os.makedirs(save_dir, exist_ok=True)
@@ -379,11 +229,7 @@ if __name__ == "__main__":
 
     model.resize_token_embeddings(len(tokenizer))
 
-    if not load_processed:
-        train_dataset, val_dataset = load_data(data, tokenizer, path_to_cache)
-    else:
-        train_dataset = load_from_disk(os.path.join(path_to_processed, "train"))
-        val_dataset = load_from_disk(os.path.join(path_to_processed, "val"))
+    train_dataset, val_dataset = load_data(data, tokenizer, config)
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -395,7 +241,7 @@ if __name__ == "__main__":
     eval_dataloader = DataLoader(
         val_dataset,
         collate_fn=default_data_collator,
-        batch_size=int(config["eval_batch_size"]), 
+        batch_size=int(config["eval_batch_size"]),
         num_workers=16
     )
 
@@ -436,7 +282,7 @@ if __name__ == "__main__":
 
     (
         model,
-        optimizer, 
+        optimizer,
         train_dataloader,
         eval_dataloader,
         lr_scheduler,
@@ -456,9 +302,9 @@ if __name__ == "__main__":
     )
 
     total_batch_size = (
-        config["train_batch_size"]
-        * accelerator.num_processes
-        * int(config["gradient_accumulation_steps"])
+            config["train_batch_size"]
+            * accelerator.num_processes
+            * int(config["gradient_accumulation_steps"])
     )
 
     print("***** Running training *****")
@@ -477,9 +323,9 @@ if __name__ == "__main__":
     completed_steps = 0
     starting_epoch = 0
     padding_tokens = get_audio_padding_tokens(quantizer, device)
-    
-    model = freeze(model)
-  
+
+    # model = freeze(model)
+
     for epoch in range(starting_epoch, num_train_epochs):
         train_loss, completed_steps = train(
             model,
@@ -490,12 +336,6 @@ if __name__ == "__main__":
             completed_steps,
             progress_bar,
             max_train_steps,
-            quantizer,
-            n_codebooks_tts,
-            n_codebooks_asr,
-            max_seq_length,
-            n_special_tokens, 
-            device
         )
         print(f"EPOCH {epoch + 1} train loss:", train_loss)
         eval(
@@ -505,11 +345,6 @@ if __name__ == "__main__":
             epoch,
             completed_steps,
             train_loss,
-            quantizer,
-            n_tokens + 1,
-            max_seq_length,
-            n_special_tokens,
-            device
         )
 
-    save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler,  save_dir, checkpointing_steps)
+    save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler, save_dir, checkpointing_steps)

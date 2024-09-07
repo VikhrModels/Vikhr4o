@@ -7,7 +7,7 @@ from datasets import DatasetDict
 from speechtokenizer import SpeechTokenizer
 from transformers import AutoTokenizer
 
-from src.data import load_data
+from src.data import DATASET_2_LOAD_FUNCTION
 
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
 parser.add_argument(
@@ -37,13 +37,13 @@ device = "cuda:0"
 
 
 def quantize(row, quantizer):
-    audio_data, sample_rate = row["audio_data"], row["sampling_rate"]
+    audio_data, sample_rate = row["audio"]["array"], row["audio"]["sampling_rate"]
 
-    audio = torch.tensor(audio_data).view(1, 1, audio_data.shape[-1]).float()
+    audio = torch.tensor(audio_data).view(1, 1, len(audio_data)).float()
     audio = audio.to(device)
     codes = quantizer.encode(audio)
     codes = codes.squeeze(1)
-    codes.cpu()
+    codes = codes.cpu()
 
     del audio
     torch.cuda.empty_cache()
@@ -73,9 +73,13 @@ if __name__ == "__main__":
 
     assert len(tokenizer) == n_tokens + codebook_size
 
-    train_dataset, val_dataset = load_data(data, tokenizer, path_to_cache)
+    train_dataset, val_dataset = DATASET_2_LOAD_FUNCTION[data[0]](path_to_cache)
+
     train_dataset = train_dataset.map(quantize, fn_kwargs={"quantizer": quantizer})
     val_dataset = val_dataset.map(quantize, fn_kwargs={"quantizer": quantizer})
+
+    train_dataset = train_dataset.remove_columns(["audio"])
+    val_dataset = val_dataset.remove_columns(["audio"])
 
     dataset = DatasetDict(
         {
@@ -85,7 +89,6 @@ if __name__ == "__main__":
     )
     dataset.push_to_hub(
         prepared_data_path,
-        storage_options={"format": "arrow"},
         private=True
     )
 
