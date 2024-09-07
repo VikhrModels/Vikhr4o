@@ -114,13 +114,14 @@ def train(
             outputs = model(**batch)
             loss = outputs.loss
 
-            last_loss = loss.float()
+            last_loss = loss.detach().float()
             total_loss += last_loss
             acc_loss += last_loss
 
             accelerator.backward(loss)
 
-            del batch
+            del batch, loss, outputs
+            torch.cuda.empty_cache()
 
         if accelerator.sync_gradients:
             accelerator.clip_grad_norm_(model.parameters(), max_grad_norm)
