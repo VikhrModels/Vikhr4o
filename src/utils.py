@@ -34,7 +34,7 @@ def freeze(
         freeze_ln=True,
         freeze_attn=True,
         freeze_ff=True,
-        freeze_ff_layers=[],  # None means all or no layers, depending on freeze_ff
+        freeze_ff_layers=None,  # None means all or no layers, depending on freeze_ff
         freeze_other=True,
 ):
     if freeze_ff_layers is not None and not isinstance(freeze_ff_layers, (list, set)):
@@ -63,6 +63,8 @@ def freeze(
                 # Apply specific layer freeze setting
                 p.requires_grad = not (freeze_ff and layer_index in freeze_ff_layers)
         elif "attn" in name:
+            # if not p.requires_grad or freeze_attn:
+            print("attn", name)
             p.requires_grad = not freeze_attn
         else:
             p.requires_grad = not freeze_other
@@ -107,12 +109,9 @@ def decode_audio(
 
     if reminder:
         # pad if last frame is incomplete
-        audio_tokens = torch.cat([audio_tokens, pad_tokens[reminder:]], dim=0)
+        audio_tokens = torch.cat([audio_tokens, pad_tokens[n_codebooks - reminder:]], dim=0)
 
-    if n_codebooks > 1:
-        transposed = audio_tokens.view(-1, n_codebooks).t()
-    else:
-        transposed = audio_tokens
+    transposed = audio_tokens.view(-1, n_codebooks).t()
     codes = transposed.view(n_codebooks, 1, -1).to(device)
 
     audio = quantizer.decode(codes).squeeze(0)
@@ -169,9 +168,24 @@ def prepare_parler_tts_with_description(cache_dir) -> tuple[Dataset, Dataset]:
 
     audio_features_train = train_audio["audio"]
     audio_features_val = val_audio["audio"]
-    train_text = train_text.map(lambda x, i: {"audio": audio_features_train[i]}, with_indices=True)
-    val_text = val_text.map(lambda x, i: {"audio": audio_features_val[i]}, with_indices=True)
+
+    train_text = train_text.map(lambda x, i: {"audio": audio_features_train[i]}, with_indices=True,
+                                cache_file_name="cache/merge_train")
+    val_text = val_text.map(lambda x, i: {"audio": audio_features_val[i]}, with_indices=True,
+                            cache_file_name="cache/merge_val")
     return train_text, val_text
+
+
+def prepare_homebrewltd(cache_dir) -> tuple[Dataset, Dataset]:
+    # dataset_1 = load_dataset("homebrewltd/instruction-speech-encodec-v1", "default", cache_dir=cache_dir)["train"]
+    dataset = load_dataset("homebrewltd/instruction-speech-encodec-v1.5", "default", cache_dir=cache_dir)["train"]
+
+    # dataset = concatenate_datasets([dataset_1, dataset_2])
+    dataset = dataset.rename_column("answer", "text")
+    splits = dataset.train_test_split(test_size=0.1)
+
+    return splits["train"].select(range(len(splits["train"]) // 10)), splits["test"].select(
+        range(len(splits["test"]) // 10))
 
 
 def get_last_checkpoint(save_dir):
@@ -203,3 +217,13 @@ def save_checkpoint(
         tokenizer.save_pretrained(path)
         torch.save(optimizer.state_dict(), os.path.join(path, "optimizer.pt"))
         torch.save(scheduler.state_dict(), os.path.join(path, "scheduler.pt"))
+
+
+DATASET_2_LOAD_FUNCTION = {
+    "homebrewltd": prepare_homebrewltd,
+    "librispeech": prepare_librispeech,
+    "parler-tts": prepare_parler_tts,
+    "parler_tts_with_description": prepare_parler_tts_with_description,
+    "synthetic": prepare_synthetic,
+    "tedlium": prepare_tedlium,
+}

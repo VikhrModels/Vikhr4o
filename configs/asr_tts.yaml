@@ -1,17 +1,20 @@
 base_model: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-save_dir: "./results_voice_description_5_2"
+checkpoint_path: "/home/alexw/InternShips/4o/Vikhr4o_tmp/results_voice_description_3_1/checkpoint-116000"
+save_dir: "./results_voice_description_3_1_instruct"
 
-data: ["Vikhrmodels/librispeech_quantized", "Vikhrmodels/parler_tts_with_description_quantized"]
-prepared_data_path: "Vikhrmodels/parler_tts_with_description_quantized"
+data: ["Vikhrmodels/librispeech_quantized",
+       "Vikhrmodels/parler_tts_with_description_quantized_v2",
+       "Vikhrmodels/homebrewltd_instruction-speech-encodec-quantized"]
+prepared_data_path: "Vikhrmodels/homebrewltd_instruction-speech-encodec-quantized"
 
 start_audio_token: "<soa>"
 end_audio_token: "<eoa>"
 end_sequence_token: "<eos>"
 n_special_tokens: 3
 
-n_codebooks_tts: 5
-n_codebooks_asr: 2
-max_seq_length: 4096
+n_codebooks_tts: 3
+n_codebooks_asr: 3
+max_seq_length: 2048
 raw_audio_length: 256000
 
 load_processed: False
@@ -39,7 +42,7 @@ eval_batch_size: 1
 learning_rate: 5e-4
 gradient_accumulation_steps: 8
 lr_scheduler_type: "cosine"
-num_train_epochs: 5
+num_train_epochs: 10
 num_warmup_steps: 10
 checkpointing_steps: 1000
 logging_steps: 20

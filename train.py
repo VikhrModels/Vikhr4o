@@ -1,5 +1,4 @@
 from src.utils import (
-    freeze,
     get_audio_padding_tokens,
     decode_audio,
     save_checkpoint
@@ -13,7 +12,6 @@ from tqdm import tqdm
 
 import torch
 from torch.utils.data import DataLoader
-from datasets import load_from_disk
 
 from transformers import (
     AutoTokenizer,
@@ -29,7 +27,6 @@ from speechtokenizer import SpeechTokenizer
 import os
 
 from safetensors import safe_open
-from safetensors.torch import save_file
 
 # Parse arguments
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
@@ -43,6 +40,7 @@ with open(args.config, "r") as file:
     config = yaml.safe_load(file)
 
 base_model = config["base_model"]
+checkpoint_path = config.get("checkpoint_path")
 save_dir = config["save_dir"]
 
 data = config["data"]
@@ -168,8 +166,7 @@ def eval(
             loss = outputs.loss
             losses.append(accelerator.gather_for_metrics(loss.repeat(int(config["eval_batch_size"]))))
 
-            del batch
-            torch.cuda.empty_cache()
+            del outputs
 
     losses = torch.cat(losses)
     try:
@@ -189,6 +186,23 @@ def eval(
     }
 
     accelerator.log(base_log, step=completed_steps)
+
+
+def fix_checkpoint(model, checkpoint_path):
+    checkpoint_path += "/model.safetensors"
+    with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
+        state_dict = {key: f.get_tensor(key) for key in f.keys()}
+
+    if 'state_dict' in state_dict:
+        state_dict = state_dict['state_dict']
+
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        name = k.replace("module.", "")
+        new_state_dict[name] = v
+
+    model.load_state_dict(new_state_dict)
+    return model
 
 
 if __name__ == "__main__":
@@ -213,6 +227,7 @@ if __name__ == "__main__":
         {"additional_special_tokens": [start_audio_token, end_audio_token]}
     )
     n_tokens = len(tokenizer)
+    print("Not audio tokens:", n_tokens)
 
     start_audio_token_id = tokenizer(start_audio_token)["input_ids"][-1]
     end_audio_token_id = tokenizer(end_audio_token)["input_ids"][-1]
@@ -224,13 +239,16 @@ if __name__ == "__main__":
 
     codebook_size = quantizer.quantizer.bins
 
+    train_dataset, val_dataset = load_data(data, tokenizer, config)
+
     tokenizer.add_tokens([f"<audio_token_{i}>" for i in range(codebook_size)])
 
     assert len(tokenizer) == n_tokens + codebook_size
 
     model.resize_token_embeddings(len(tokenizer))
 
-    train_dataset, val_dataset = load_data(data, tokenizer, config)
+    if checkpoint_path is not None:
+        model = fix_checkpoint(model, checkpoint_path)
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -281,6 +299,15 @@ if __name__ == "__main__":
         num_training_steps=max_train_steps * accelerator.num_processes,
     )
 
+    if checkpoint_path is not None:
+        optim_state = torch.load(os.path.join(checkpoint_path, "optimizer.pt"))
+        scheduler_state = torch.load(os.path.join(checkpoint_path, "scheduler.pt"))
+
+        optimizer.load_state_dict(optim_state)
+        lr_scheduler.load_state_dict(scheduler_state)
+
+    # model = freeze(model, freeze_other=False, freeze_ff=True, freeze_ff_layers=[31])
+
     (
         model,
         optimizer,
@@ -324,8 +351,6 @@ if __name__ == "__main__":
     completed_steps = 0
     starting_epoch = 0
     padding_tokens = get_audio_padding_tokens(quantizer, device)
-
-    # model = freeze(model)
 
     for epoch in range(starting_epoch, num_train_epochs):
         train_loss, completed_steps = train(

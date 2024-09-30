@@ -1,5 +1,7 @@
 import argparse
 
+import librosa
+import numpy as np
 import torch
 import yaml
 
@@ -38,6 +40,8 @@ device = "cuda:0"
 
 def quantize(row, quantizer):
     audio_data, sample_rate = row["audio"]["array"], row["audio"]["sampling_rate"]
+    if sample_rate != quantizer.sample_rate:
+        audio_data = librosa.resample(np.array(audio_data), orig_sr=sample_rate, target_sr=quantizer.sample_rate)
 
     audio = torch.tensor(audio_data).view(1, 1, len(audio_data)).float()
     audio = audio.to(device)
@@ -75,8 +79,8 @@ if __name__ == "__main__":
 
     train_dataset, val_dataset = DATASET_2_LOAD_FUNCTION[data[0]](path_to_cache)
 
-    train_dataset = train_dataset.map(quantize, fn_kwargs={"quantizer": quantizer})
-    val_dataset = val_dataset.map(quantize, fn_kwargs={"quantizer": quantizer})
+    train_dataset = train_dataset.map(quantize, fn_kwargs={"quantizer": quantizer}, cache_file_name="cache/tokenize_train_homebrew")
+    val_dataset = val_dataset.map(quantize, fn_kwargs={"quantizer": quantizer}, cache_file_name="cache/tokenize_val_homebrew")
 
     train_dataset = train_dataset.remove_columns(["audio"])
     val_dataset = val_dataset.remove_columns(["audio"])
