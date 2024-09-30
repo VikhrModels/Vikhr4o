@@ -48,7 +48,7 @@ class Vikhr4oDatasetBase(Dataset):
 
         if self.asr:
             audio_length = audio_input_tokens.shape[-1]
-            if audio_length > self.max_seq_length:
+            if audio_length > self.max_seq_length - self.n_special_tokens:
                 audio_length = self.max_seq_length // 3 * 2
 
             audio_length -= audio_length % self.n_codebooks
@@ -59,7 +59,7 @@ class Vikhr4oDatasetBase(Dataset):
 
         else:
             text_length = text_input_tokens.shape[-1]
-            if text_length > self.max_seq_length:
+            if text_length > self.max_seq_length - self.n_special_tokens:
                 text_length = self.max_seq_length // 2
 
             audio_length = min(
