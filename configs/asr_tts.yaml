@@ -1,12 +1,10 @@
-base_model: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+base_model: "meta-llama/Llama-3.2-1B"
 checkpoint_path: null
 save_dir: "./results_voice_description_wav_speech"
 
 data:
-  - Vikhrmodels/librispeech_quantized-wav
-  - Vikhrmodels/parler_tts_with_description_quantized-wav
-  - Vikhrmodels/parler_tts_with_description_quantized_v2
   - Vikhrmodels/librispeech_quantized
+  - Vikhrmodels/parler_tts_with_description_quantized
 
 
 start_audio_token: "<soa>"
@@ -14,8 +12,6 @@ end_audio_token: "<eoa>"
 end_sequence_token: "<eos>"
 n_special_tokens: 3
 
-n_codebooks_tts: 3
-n_codebooks_asr: 1
 max_seq_length: 2048
 raw_audio_length: 256000
 

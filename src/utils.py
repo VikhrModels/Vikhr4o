@@ -99,7 +99,6 @@ def decode_audio(
         n_codebooks,
         start_audio_token_id,
         end_audio_token_id,
-        pad_tokens=None,
         device="cuda"):
     # find start and end indices of audio tokens
     start = torch.nonzero(tokens == start_audio_token_id)
@@ -227,7 +226,6 @@ def save_checkpoint(
         model, accelerator, tokenizer, optimizer, scheduler, save_dir, checkpointing_steps
 ):
     accelerator.wait_for_everyone()
-    state = model.state_dict()
 
     path = os.path.join(
         save_dir, f"checkpoint-{get_last_checkpoint(save_dir) * checkpointing_steps}"
@@ -236,17 +234,13 @@ def save_checkpoint(
     unwrapped_model = accelerator.unwrap_model(model)
     unwrapped_model.save_pretrained(
         path,
-        #state_dict=state,
         is_main_process=accelerator.is_main_process,
-        #save_function=accelerator.save,
         safe_serialization=False,
-        # save_embedding_layers=True,
     )
     if accelerator.is_main_process:
         tokenizer.save_pretrained(path)
         torch.save(optimizer.state_dict(), os.path.join(path, "optimizer.pt"))
         torch.save(scheduler.state_dict(), os.path.join(path, "scheduler.pt"))
-
 
 
 DATASET_2_LOAD_FUNCTION = {

@@ -39,18 +39,10 @@ data = config["data"]
 
 start_audio_token = config["start_audio_token"]
 end_audio_token = config["end_audio_token"]
-end_sequence_token = config["end_sequence_token"]
-n_special_tokens = config["n_special_tokens"]
-
-n_codebooks_tts = int(config["n_codebooks_tts"])
-n_codebooks_asr = int(config["n_codebooks_asr"])
-max_seq_length = int(config["max_seq_length"])
-raw_audio_length = int(config["raw_audio_length"])
-
-quantizer_type = config["quantizer_type"]
 
 path_to_cache = config["path_to_cache"]
 checkpointing_steps = int(config['checkpointing_steps'])
+
 max_grad_norm = float(config['max_grad_norm'])
 torch.backends.cuda.matmul.allow_tf32 = config["allow_tf32"]
 torch.backends.cudnn.allow_tf32 = config["allow_tf32"]
