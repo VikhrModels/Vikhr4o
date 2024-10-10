@@ -3,33 +3,36 @@ from datasets import load_dataset
 import torch
 from torch.utils.data import Dataset, ConcatDataset
 
-from src.utils import DATASET_2_LOAD_FUNCTION
-
 
 class Vikhr4oDatasetBase(Dataset):
-    def __init__(self, dataset, tokenizer, asr: bool, config):
+    def __init__(self, dataset, tokenizer, quantizer, asr: bool, config):
         self.dataset = dataset
         self.tokenizer = tokenizer
+        self.quantizer = quantizer
         self.asr = asr
 
-        if asr:
-            self.n_codebooks = config["n_codebooks_asr"]
+        if self.asr:
+            self.n_codebooks = quantizer.asr_n_codebooks
         else:
-            self.n_codebooks = config["n_codebooks_tts"]
+            self.n_codebooks = quantizer.tts_n_codebooks
 
         self.max_seq_length = config["max_seq_length"]
         self.n_special_tokens = config["n_special_tokens"]
-        self.n_text_tokens = len(tokenizer)
 
-        self.soa = tokenizer(config["start_audio_token"], return_tensors="pt")["input_ids"][
-                   :, -1:
-                   ]
-        self.eoa = tokenizer(config["end_audio_token"], return_tensors="pt")["input_ids"][
-                   :, -1:
-                   ]
-        self.eos = tokenizer(config["end_sequence_token"], return_tensors="pt")["input_ids"][
-                   :, -1:
-                   ]
+        self.soa = tokenizer(
+            config["start_audio_token"],
+            return_tensors="pt"
+        )["input_ids"][:, -1:]
+
+        self.eoa = tokenizer(
+            config["end_audio_token"],
+            return_tensors="pt"
+        )["input_ids"][:, -1:]
+
+        self.eos = tokenizer(
+            config["end_sequence_token"],
+            return_tensors="pt"
+        )["input_ids"][:, -1:]
 
     def __len__(self):
         return len(self.dataset)
@@ -41,14 +44,11 @@ class Vikhr4oDatasetBase(Dataset):
     def __getitem__(self, idx):
         row = self.dataset[idx]
         text_input_tokens = self.get_text_tokens(row)
-
-        codes = torch.tensor(row["audio_tokens"])
-        raw_audio_tokens = codes[:self.n_codebooks] + self.n_text_tokens
-        audio_input_tokens = raw_audio_tokens.t().contiguous().view(1, -1)
+        audio_input_tokens = self.quantizer(row)
 
         if self.asr:
             audio_length = audio_input_tokens.shape[-1]
-            if audio_length > self.max_seq_length - self.n_special_tokens:
+            if audio_length > self.max_seq_length:
                 audio_length = self.max_seq_length // 3 * 2
 
             audio_length -= audio_length % self.n_codebooks
@@ -59,7 +59,7 @@ class Vikhr4oDatasetBase(Dataset):
 
         else:
             text_length = text_input_tokens.shape[-1]
-            if text_length > self.max_seq_length - self.n_special_tokens:
+            if text_length > self.max_seq_length:
                 text_length = self.max_seq_length // 2
 
             audio_length = min(
@@ -113,16 +113,6 @@ class Vikhr4oDatasetBase(Dataset):
         }
 
 
-class Vikhr4oDatasetTTSASRInstruct(Vikhr4oDatasetBase):
-    def get_text_tokens(self, row):
-        if self.asr:
-            text = "transcription is '{text}'".format(text=row["text"])
-        else:
-            text = "Say '{text}'".format(text=row["text"])
-        text_tokenized = self.tokenizer(text, return_tensors="pt")
-        return text_tokenized["input_ids"]
-
-
 class Vikhr4oDatasetVoiceDescription(Vikhr4oDatasetBase):
     def get_text_tokens(self, row):
         if self.asr:
@@ -133,38 +123,54 @@ class Vikhr4oDatasetVoiceDescription(Vikhr4oDatasetBase):
         return text_tokenized["input_ids"]
 
 
-def load_train_val_splits(dataset: str, tokenizer, config):
-    ds = load_dataset(dataset)
-    train_ds, val_ds = ds["train"], ds["validation"]
+def load_tokenized_data(data_path: str):
+    speech_path = data_path + "-speech"
+    wav_path = data_path + "-wav"
+
+    speech = load_dataset(speech_path)
+    train_speech, val_speech = speech["train"], speech["validation"]
+
+    wav = load_dataset(wav_path)
+    train_wav, val_wav = wav["train"], wav["validation"]
+
+    train = train_speech.rename_column("audio_tokens", "audio_tokens_speech")
+    train = train.add_column("audio_tokens_wav", train_wav["audio_tokens"])
+
+    val = val_speech.rename_column("audio_tokens", "audio_tokens_speech")
+    val = val.add_column("audio_tokens_wav", val_wav["audio_tokens"])
+
+    return train, val
+
+
+def load_train_val_splits(dataset: str, tokenizer, quantizer, config):
+    train_ds, val_ds = load_tokenized_data(dataset)
 
     if "librispeech" in dataset:
-        train_tts = Vikhr4oDatasetTTSASRInstruct(train_ds, tokenizer, False, config)
-        val_tts = Vikhr4oDatasetTTSASRInstruct(val_ds, tokenizer, False, config)
+        train_asr = Vikhr4oDatasetBase(train_ds, tokenizer, quantizer, True, config)
+        val_asr = Vikhr4oDatasetBase(val_ds, tokenizer, quantizer, True, config)
 
-        train_asr = Vikhr4oDatasetTTSASRInstruct(train_ds, tokenizer, True, config)
-        val_asr = Vikhr4oDatasetTTSASRInstruct(val_ds, tokenizer, True, config)
+        train_tts = Vikhr4oDatasetBase(train_ds, tokenizer, quantizer, False, config)
+        val_tts = Vikhr4oDatasetBase(val_ds, tokenizer, quantizer, False, config)
 
-        train_datasets = [train_tts, train_asr]
-        val_datasets = [val_tts, val_asr]
+        return [train_asr, train_tts], [val_asr, val_tts]
 
     elif "with_description" in dataset:
-        train_tts = Vikhr4oDatasetVoiceDescription(train_ds, tokenizer, False, config)
-        val_tts = Vikhr4oDatasetVoiceDescription(val_ds, tokenizer, False, config)
+        train_asr = Vikhr4oDatasetVoiceDescription(train_ds, tokenizer, quantizer, True, config)
+        val_asr = Vikhr4oDatasetVoiceDescription(val_ds, tokenizer, quantizer, True, config)
 
-        train_asr = Vikhr4oDatasetVoiceDescription(train_ds, tokenizer, True, config)
-        val_asr = Vikhr4oDatasetVoiceDescription(val_ds, tokenizer, True, config)
+        train_tts = Vikhr4oDatasetVoiceDescription(train_ds, tokenizer, quantizer, False, config)
+        val_tts = Vikhr4oDatasetVoiceDescription(val_ds, tokenizer, quantizer, False, config)
 
-        train_datasets = [train_tts, train_asr]
-        val_datasets = [val_tts, val_asr]
+        return [train_asr, train_tts], [val_asr, val_tts]
 
     elif "homebrewltd" in dataset:
-        train_asr = Vikhr4oDatasetBase(train_ds, tokenizer, True, config)
-        val_asr = Vikhr4oDatasetBase(val_ds, tokenizer, True, config)
+        train_asr = Vikhr4oDatasetBase(train_ds, tokenizer, quantizer, True, config)
+        val_asr = Vikhr4oDatasetBase(val_ds, tokenizer, quantizer, True, config)
 
-        train_datasets = [train_asr]
-        val_datasets = [val_asr]
+        return [train_asr], [val_asr]
 
-    return train_datasets, val_datasets
+    else:
+        raise ValueError("Unknown dataset.")
 
 
 def load_data(datasets: list[str], tokenizer, config) -> tuple[Dataset, Dataset]:

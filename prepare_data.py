@@ -1,15 +1,15 @@
 import argparse
+import yaml
 
 import librosa
 import numpy as np
 import torch
-import yaml
 
 from datasets import DatasetDict
 from speechtokenizer import SpeechTokenizer
-from transformers import AutoTokenizer
 
 from src.data import DATASET_2_LOAD_FUNCTION
+
 
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
 parser.add_argument(
@@ -56,16 +56,6 @@ def quantize(row, quantizer):
 
 
 if __name__ == "__main__":
-    tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=path_to_cache)
-
-    tokenizer.add_special_tokens(
-        {"additional_special_tokens": [start_audio_token, end_audio_token]}
-    )
-    n_tokens = len(tokenizer)
-
-    start_audio_token_id = tokenizer(start_audio_token)["input_ids"][-1]
-    end_audio_token_id = tokenizer(end_audio_token)["input_ids"][-1]
-
     config_path = config["quantizer_config_path"]
     ckpt_path = config["quantizer_ckpt_path"]
     quantizer = SpeechTokenizer.load_from_checkpoint(config_path, ckpt_path)
@@ -73,14 +63,18 @@ if __name__ == "__main__":
 
     codebook_size = quantizer.quantizer.bins
 
-    tokenizer.add_tokens([f"<audio_token_{i}>" for i in range(codebook_size)])
-
-    assert len(tokenizer) == n_tokens + codebook_size
-
     train_dataset, val_dataset = DATASET_2_LOAD_FUNCTION[data[0]](path_to_cache)
 
-    train_dataset = train_dataset.map(quantize, fn_kwargs={"quantizer": quantizer}, cache_file_name="cache/tokenize_train_homebrew")
-    val_dataset = val_dataset.map(quantize, fn_kwargs={"quantizer": quantizer}, cache_file_name="cache/tokenize_val_homebrew")
+    train_dataset = train_dataset.map(
+        quantize,
+        fn_kwargs={"quantizer": quantizer},
+        cache_file_name="cache/tokenize_train_homebrew"
+    )
+    val_dataset = val_dataset.map(
+        quantize,
+        fn_kwargs={"quantizer": quantizer},
+        cache_file_name="cache/tokenize_val_homebrew"
+    )
 
     train_dataset = train_dataset.remove_columns(["audio"])
     val_dataset = val_dataset.remove_columns(["audio"])
@@ -95,4 +89,3 @@ if __name__ == "__main__":
         prepared_data_path,
         private=True
     )
-

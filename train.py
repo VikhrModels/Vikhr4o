@@ -1,12 +1,7 @@
-from src.utils import (
-    get_audio_padding_tokens,
-    decode_audio,
-    save_checkpoint
-)
-from src.data import load_data
-
+import argparse
 import math
-import random
+import os
+import yaml
 
 from tqdm import tqdm
 
@@ -21,12 +16,9 @@ from transformers import (
 )
 from accelerate import Accelerator, DistributedDataParallelKwargs, InitProcessGroupKwargs
 
-import argparse
-import yaml
-from speechtokenizer import SpeechTokenizer
-import os
-
-from safetensors import safe_open
+from src.data import load_data
+from src.tokenizer import AudioTokenizer, get_start_tokens
+from src.utils import save_checkpoint, fix_checkpoint
 
 # Parse arguments
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
@@ -55,41 +47,13 @@ n_codebooks_asr = int(config["n_codebooks_asr"])
 max_seq_length = int(config["max_seq_length"])
 raw_audio_length = int(config["raw_audio_length"])
 
-load_processed = bool(config["load_processed"])
-path_to_processed = config["path_to_processed"]
+quantizer_type = config["quantizer_type"]
+
 path_to_cache = config["path_to_cache"]
-quantize_before_training = bool(config["quantize_before_training"])
 checkpointing_steps = int(config['checkpointing_steps'])
 max_grad_norm = float(config['max_grad_norm'])
 torch.backends.cuda.matmul.allow_tf32 = config["allow_tf32"]
 torch.backends.cudnn.allow_tf32 = config["allow_tf32"]
-
-
-def test_audio_generation(model, batch, n, quantizer, pad_tokens, n_original_tokens):
-    inds = random.choices(range(len(batch)), k=n)
-    audios = []
-
-    for input_ids, attn in batch["input_ids"], batch["attention_mask"]:
-        with torch.no_grad():
-            ind = torch.nonzero(input_ids == start_audio_token_id)[0, -1]
-            input_ids = input_ids[: ind + 1].unsqueeze(0)
-            attn = attn[: ind + 1].unsqueeze(0).to(torch.float16)
-            output = model.generate(
-                input_ids=input_ids, attention_mask=attn, max_length=max_seq_length
-            )
-
-        try:
-            audio = decode_audio(output, quantizer, pad_tokens, n_original_tokens)
-            audio_file = os.path.join(save_dir, "audio")
-            os.makedirs(audio_file, exists_ok=True)
-            audio_file = os.path.join(audio_file, f"audio_{ind + 1}.wav")
-            audio.write(audio_file)
-            audios.append(audio_file)
-        except:
-            print("No audio generated.")
-            pass
-
-    return audios
 
 
 def train(
@@ -188,23 +152,6 @@ def eval(
     accelerator.log(base_log, step=completed_steps)
 
 
-def fix_checkpoint(model, checkpoint_path):
-    checkpoint_path += "/model.safetensors"
-    with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
-        state_dict = {key: f.get_tensor(key) for key in f.keys()}
-
-    if 'state_dict' in state_dict:
-        state_dict = state_dict['state_dict']
-
-    new_state_dict = {}
-    for k, v in state_dict.items():
-        name = k.replace("module.", "")
-        new_state_dict[name] = v
-
-    model.load_state_dict(new_state_dict)
-    return model
-
-
 if __name__ == "__main__":
     import datetime
 
@@ -232,12 +179,10 @@ if __name__ == "__main__":
     start_audio_token_id = tokenizer(start_audio_token)["input_ids"][-1]
     end_audio_token_id = tokenizer(end_audio_token)["input_ids"][-1]
 
-    config_path = config["quantizer_config_path"]
-    ckpt_path = config["quantizer_ckpt_path"]
-    quantizer = SpeechTokenizer.load_from_checkpoint(config_path, ckpt_path)
-    quantizer.eval().to(device)
+    tokens_config = get_start_tokens(config["quantizer"], n_tokens)
+    quantizer = AudioTokenizer(config["quantizer"], tokens_config)
 
-    codebook_size = quantizer.quantizer.bins
+    codebook_size = tokens_config.get("speech", 0) + tokens_config.get("wav", 0)
 
     train_dataset, val_dataset = load_data(data, tokenizer, config)
 
@@ -301,10 +246,10 @@ if __name__ == "__main__":
 
     if checkpoint_path is not None:
         optim_state = torch.load(os.path.join(checkpoint_path, "optimizer.pt"))
-        scheduler_state = torch.load(os.path.join(checkpoint_path, "scheduler.pt"))
+        sceduler_state = torch.load(os.path.join(checkpoint_path, "scheduler.pt"))
 
         optimizer.load_state_dict(optim_state)
-        lr_scheduler.load_state_dict(scheduler_state)
+        lr_scheduler.load_state_dict(sceduler_state)
 
     # model = freeze(model, freeze_other=False, freeze_ff=True, freeze_ff_layers=[31])
 
@@ -350,7 +295,6 @@ if __name__ == "__main__":
     )
     completed_steps = 0
     starting_epoch = 0
-    padding_tokens = get_audio_padding_tokens(quantizer, device)
 
     for epoch in range(starting_epoch, num_train_epochs):
         train_loss, completed_steps = train(

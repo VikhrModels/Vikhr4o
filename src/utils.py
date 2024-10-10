@@ -1,8 +1,13 @@
-import torch
-from audiotools import AudioSignal
 import os
+
+import torch
+
 from datasets import load_dataset, Dataset
 from datasets import Value
+
+from audiotools import AudioSignal
+from aac_datasets import AudioCaps
+from safetensors import safe_open
 
 
 def freeze_entire_model(model):
@@ -90,12 +95,12 @@ def get_audio_padding_tokens(quantizer, device):
 def decode_audio(
         tokens,
         quantizer,
-        pad_tokens,
         n_original_tokens,
         n_codebooks,
         start_audio_token_id,
         end_audio_token_id,
-        device):
+        pad_tokens=None,
+        device="cuda"):
     # find start and end indices of audio tokens
     start = torch.nonzero(tokens == start_audio_token_id)
     end = torch.nonzero(tokens == end_audio_token_id)
@@ -103,24 +108,29 @@ def decode_audio(
     start = start[0, -1] + 1 if len(start) else 0
     end = end[0, -1] if len(end) else tokens.shape[-1]
 
-    # subtract length of original vocabulary -> tokens in range [0, 1024)
+    # substract length of original vocabulary -> tokens in range [0, 1024)
     audio_tokens = tokens[start:end] % n_original_tokens
     reminder = audio_tokens.shape[-1] % n_codebooks
 
     if reminder:
-        # pad if last frame is incomplete
+        # pad if last frame is incomplete; needed for sppechtokenizer only
+        pad_tokens = get_audio_padding_tokens(quantizer, device)
         audio_tokens = torch.cat([audio_tokens, pad_tokens[n_codebooks - reminder:]], dim=0)
 
     transposed = audio_tokens.view(-1, n_codebooks).t()
     codes = transposed.view(n_codebooks, 1, -1).to(device)
 
-    audio = quantizer.decode(codes).squeeze(0)
+    features = quantizer.codes_to_features(codes).to("cpu")
+    quantizer = quantizer.to("cpu")
+    bandwidth_id = torch.tensor([0])
+
+    audio = quantizer.decode(features, bandwidth_id=bandwidth_id).squeeze(0)
 
     del tokens
     del audio_tokens
     torch.cuda.empty_cache()
 
-    return AudioSignal(audio.detach().cpu().numpy(), quantizer.sample_rate)
+    return AudioSignal(audio.detach().cpu().numpy(), 24000)
 
 
 def prepare_librispeech(cache_dir) -> tuple[Dataset, Dataset]:
@@ -177,15 +187,33 @@ def prepare_parler_tts_with_description(cache_dir) -> tuple[Dataset, Dataset]:
 
 
 def prepare_homebrewltd(cache_dir) -> tuple[Dataset, Dataset]:
-    # dataset_1 = load_dataset("homebrewltd/instruction-speech-encodec-v1", "default", cache_dir=cache_dir)["train"]
-    dataset = load_dataset("homebrewltd/instruction-speech-encodec-v1.5", "default", cache_dir=cache_dir)["train"]
+    dataset = load_dataset("homebrewltd/instruction-speech-encodec-v1.5",
+                           "default", cache_dir=cache_dir)["train"]
 
-    # dataset = concatenate_datasets([dataset_1, dataset_2])
     dataset = dataset.rename_column("answer", "text")
     splits = dataset.train_test_split(test_size=0.1)
 
     return splits["train"].select(range(len(splits["train"]) // 10)), splits["test"].select(
         range(len(splits["test"]) // 10))
+
+
+def prepare_audio_captions(cache_dir) -> tuple[Dataset, Dataset]:
+    train = AudioCaps(
+        root=cache_dir,
+        subset="train",
+        download=False,
+        audio_format="wav",
+        download_audio=False,  # this will only download labels and metadata files
+    )
+    val = AudioCaps(
+        root=cache_dir,
+        subset="val",
+        download=False,
+        audio_format="wav",
+        download_audio=False,  # this will only download labels and metadata files
+    )
+
+    return train, val
 
 
 def get_last_checkpoint(save_dir):
@@ -220,6 +248,7 @@ def save_checkpoint(
 
 
 DATASET_2_LOAD_FUNCTION = {
+    "audiocaps": prepare_audio_captions,
     "homebrewltd": prepare_homebrewltd,
     "librispeech": prepare_librispeech,
     "parler-tts": prepare_parler_tts,
@@ -227,3 +256,20 @@ DATASET_2_LOAD_FUNCTION = {
     "synthetic": prepare_synthetic,
     "tedlium": prepare_tedlium,
 }
+
+
+def fix_checkpoint(model, checkpoint_path):
+    checkpoint_path += "/model.safetensors"
+    with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
+        state_dict = {key: f.get_tensor(key) for key in f.keys()}
+
+    if 'state_dict' in state_dict:
+        state_dict = state_dict['state_dict']
+
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        name = k.replace("module.", "")
+        new_state_dict[name] = v
+
+    model.load_state_dict(new_state_dict)
+    return model
