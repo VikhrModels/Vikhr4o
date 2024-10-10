@@ -236,15 +236,17 @@ def save_checkpoint(
     unwrapped_model = accelerator.unwrap_model(model)
     unwrapped_model.save_pretrained(
         path,
-        state_dict=state,
+        #state_dict=state,
         is_main_process=accelerator.is_main_process,
-        save_function=accelerator.save,
-        save_embedding_layers=True,
+        #save_function=accelerator.save,
+        safe_serialization=False,
+        # save_embedding_layers=True,
     )
     if accelerator.is_main_process:
         tokenizer.save_pretrained(path)
         torch.save(optimizer.state_dict(), os.path.join(path, "optimizer.pt"))
         torch.save(scheduler.state_dict(), os.path.join(path, "scheduler.pt"))
+
 
 
 DATASET_2_LOAD_FUNCTION = {
