@@ -14,7 +14,7 @@ def get_start_tokens(quantizer_config, n_base_tokens):
         tokens_config["speech"] = n_base_tokens
         n_base_tokens += quantizer_config["speech"]["n_new_tokens"]
     if "wav" in types:
-        tokens_config["speech"] = n_base_tokens
+        tokens_config["wav"] = n_base_tokens
         n_base_tokens += quantizer_config["wav"]["n_new_tokens"]
 
     return tokens_config
@@ -48,7 +48,7 @@ class AudioTokenizer:
             audio_tokens = self.quantize(row, quantizer)
             codes.append(audio_tokens)
 
-        return torch.cat(codes, dim=0)
+        return torch.cat(codes, dim=1)
 
     def quantize_tts(self, row):
         codes = []
@@ -57,4 +57,4 @@ class AudioTokenizer:
             audio_tokens = self.quantize(row, quantizer)
             codes.append(audio_tokens)
 
-        return torch.cat(codes, dim=0)
+        return torch.cat(codes, dim=1)

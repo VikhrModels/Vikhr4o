@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     codebook_size = tokens_config.get("speech", 0) + tokens_config.get("wav", 0)
 
-    train_dataset, val_dataset = load_data(data, tokenizer, config)
+    train_dataset, val_dataset = load_data(data, tokenizer, quantizer, config)
 
     tokenizer.add_tokens([f"<audio_token_{i}>" for i in range(codebook_size)])
 

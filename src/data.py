@@ -44,9 +44,10 @@ class Vikhr4oDatasetBase(Dataset):
     def __getitem__(self, idx):
         row = self.dataset[idx]
         text_input_tokens = self.get_text_tokens(row)
-        audio_input_tokens = self.quantizer(row)
 
         if self.asr:
+            audio_input_tokens = self.quantizer.quantize_asr(row)
+
             audio_length = audio_input_tokens.shape[-1]
             if audio_length > self.max_seq_length:
                 audio_length = self.max_seq_length // 3 * 2
@@ -58,6 +59,8 @@ class Vikhr4oDatasetBase(Dataset):
             )
 
         else:
+            audio_input_tokens = self.quantizer.quantize_tts(row)
+
             text_length = text_input_tokens.shape[-1]
             if text_length > self.max_seq_length:
                 text_length = self.max_seq_length // 2
@@ -173,12 +176,12 @@ def load_train_val_splits(dataset: str, tokenizer, quantizer, config):
         raise ValueError("Unknown dataset.")
 
 
-def load_data(datasets: list[str], tokenizer, config) -> tuple[Dataset, Dataset]:
+def load_data(datasets: list[str], tokenizer, quantizer, config) -> tuple[Dataset, Dataset]:
     train_datasets = []
     val_datasets = []
 
     for dataset in datasets:
-        train, val = load_train_val_splits(dataset, tokenizer, config)
+        train, val = load_train_val_splits(dataset, tokenizer, quantizer, config)
         train_datasets.extend(train)
         val_datasets.extend(val)
 
