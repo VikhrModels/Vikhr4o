@@ -269,3 +269,17 @@ def fix_checkpoint(model, checkpoint_path):
 
     model.load_state_dict(new_state_dict)
     return model
+
+
+def get_exp_name(config):
+    name = config["base_model"].split("/")[-1]
+
+    name += "_asr"
+    for aq in config["quantizer"]["asr"]:
+        name += f"_{aq['quantizer']}_{aq['n_codebooks']}"
+
+    name += "_tts"
+    for tq in config["quantizer"]["tts"]:
+        name += f"_{tq['quantizer']}_{tq['n_codebooks']}"
+
+    return name

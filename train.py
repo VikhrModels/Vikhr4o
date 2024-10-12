@@ -18,7 +18,7 @@ from accelerate import Accelerator, DistributedDataParallelKwargs, InitProcessGr
 
 from src.data import load_data
 from src.tokenizer import AudioTokenizer, get_start_tokens
-from src.utils import save_checkpoint, fix_checkpoint
+from src.utils import save_checkpoint, fix_checkpoint, get_exp_name
 
 # Parse arguments
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
@@ -57,6 +57,7 @@ def train(
         completed_steps,
         progress_bar,
         max_train_steps,
+        save_dir
 ):
     model.train()
     total_loss = 0
@@ -156,7 +157,9 @@ if __name__ == "__main__":
                          InitProcessGroupKwargs(timeout=timeout)],
     )
     device = accelerator.device
-    os.makedirs(save_dir, exist_ok=True)
+
+    exp_save_dir = os.path.join(save_dir, get_exp_name(config))
+    os.makedirs(exp_save_dir, exist_ok=True)
     tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=path_to_cache)
     model = AutoModelForCausalLM.from_pretrained(
         base_model, attn_implementation="sdpa", torch_dtype=torch.bfloat16, cache_dir=path_to_cache
@@ -294,6 +297,7 @@ if __name__ == "__main__":
             completed_steps,
             progress_bar,
             max_train_steps,
+            exp_save_dir
         )
         print(f"EPOCH {epoch + 1} train loss:", train_loss)
         eval(
@@ -305,4 +309,4 @@ if __name__ == "__main__":
             train_loss,
         )
 
-    save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler, save_dir, checkpointing_steps)
+    save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler, exp_save_dir, checkpointing_steps)

@@ -1,6 +1,6 @@
 base_model: "meta-llama/Llama-3.2-1B"
 checkpoint_path: null
-save_dir: "./results_voice_description_wav_speech"
+save_dir: "./results"
 
 data:
   - Vikhrmodels/librispeech_quantized
