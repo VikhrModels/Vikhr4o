@@ -174,15 +174,11 @@ if __name__ == "__main__":
     tokens_config = get_start_tokens(config["quantizer"], n_tokens)
     quantizer = AudioTokenizer(config["quantizer"], tokens_config)
 
-    codebook_size = tokens_config.get("speech", 0) + tokens_config.get("wav", 0)
+    codebook_size = config["quantizer"]["speech"]["n_new_tokens"] + config["quantizer"]["wav"]["n_new_tokens"]
 
     train_dataset, val_dataset = load_data(data, tokenizer, quantizer, config)
 
-    tokenizer.add_tokens([f"<audio_token_{i}>" for i in range(codebook_size)])
-
-    assert len(tokenizer) == n_tokens + codebook_size
-
-    model.resize_token_embeddings(len(tokenizer))
+    model.resize_token_embeddings(n_tokens + codebook_size)
 
     if checkpoint_path is not None:
         model = fix_checkpoint(model, checkpoint_path)
