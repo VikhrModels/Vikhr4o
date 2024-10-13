@@ -7,7 +7,6 @@ from datasets import Value
 
 from audiotools import AudioSignal
 from aac_datasets import AudioCaps
-from safetensors import safe_open
 
 
 def freeze_entire_model(model):
@@ -255,9 +254,8 @@ DATASET_2_LOAD_FUNCTION = {
 
 
 def fix_checkpoint(model, checkpoint_path):
-    checkpoint_path += "/model.safetensors"
-    with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
-        state_dict = {key: f.get_tensor(key) for key in f.keys()}
+    checkpoint_path += "/pytorch_model.bin"
+    state_dict = torch.load(checkpoint_path, map_location="cpu")
 
     if 'state_dict' in state_dict:
         state_dict = state_dict['state_dict']
