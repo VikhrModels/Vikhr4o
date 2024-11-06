@@ -4,6 +4,7 @@ import os
 import yaml
 
 from tqdm import tqdm
+import wandb
 
 import torch
 from torch.utils.data import DataLoader
@@ -46,6 +47,8 @@ checkpointing_steps = int(config['checkpointing_steps'])
 max_grad_norm = float(config['max_grad_norm'])
 torch.backends.cuda.matmul.allow_tf32 = config["allow_tf32"]
 torch.backends.cudnn.allow_tf32 = config["allow_tf32"]
+
+wandb.login(key="3b038aadf7261a1dddf7802a5e9a9ed81f6911dc")
 
 
 def train(
@@ -161,9 +164,15 @@ if __name__ == "__main__":
     exp_save_dir = os.path.join(save_dir, get_exp_name(config))
     os.makedirs(exp_save_dir, exist_ok=True)
     tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=path_to_cache)
-    model = AutoModelForCausalLM.from_pretrained(
-        base_model, attn_implementation="sdpa", torch_dtype=torch.bfloat16, cache_dir=path_to_cache
-    )
+    if checkpoint_path is not None:
+        model = AutoModelForCausalLM.from_pretrained(
+            checkpoint_path, attn_implementation="sdpa", torch_dtype=torch.bfloat16, cache_dir=path_to_cache
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model, attn_implementation="sdpa", torch_dtype=torch.bfloat16, cache_dir=path_to_cache
+        )
+
     model.gradient_checkpointing_enable()
     tokenizer.add_special_tokens(
         {"additional_special_tokens": [start_audio_token, end_audio_token]}
@@ -178,13 +187,13 @@ if __name__ == "__main__":
     quantizer = AudioTokenizer(config["quantizer"], tokens_config)
 
     codebook_size = config["quantizer"]["speech"]["n_new_tokens"] + config["quantizer"]["wav"]["n_new_tokens"]
-
+    print("New tokens:", codebook_size)
     train_dataset, val_dataset = load_data(data, tokenizer, quantizer, config)
 
     model.resize_token_embeddings(n_tokens + codebook_size)
 
-    if checkpoint_path is not None:
-        model = fix_checkpoint(model, checkpoint_path)
+    # if checkpoint_path is not None:
+        # model = fix_checkpoint(model, checkpoint_path)
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -262,7 +271,7 @@ if __name__ == "__main__":
     num_train_epochs = math.ceil(max_train_steps / num_update_steps_per_epoch)
 
     accelerator.init_trackers(
-        config["wandb_project_name"], {"lr_scheduler_type": config["lr_scheduler_type"]}
+            config["wandb_project_name"], {"lr_scheduler_type": config["lr_scheduler_type"]}, 
     )
 
     total_batch_size = (
