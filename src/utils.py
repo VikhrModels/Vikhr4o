@@ -297,4 +297,7 @@ def get_exp_name(config):
     for tq in config["quantizer"]["tts"]:
         name += f"_{tq['quantizer']}_{tq['n_codebooks']}"
 
+    if len(config["text_data"]):
+        name += f"_text"
+
     return name
