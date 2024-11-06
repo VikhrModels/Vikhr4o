@@ -1,5 +1,5 @@
-base_model: "meta-llama/Llama-3.2-1B"
-checkpoint_path: null
+base_model: "meta-llama/Llama-3.2-3B"
+checkpoint_path: "results/Llama-3.2-3B_asr_speech_3_wav_1_tts_speech_5/checkpoint-4000"
 save_dir: "./results"
 
 data:
@@ -15,7 +15,7 @@ n_special_tokens: 3
 max_seq_length: 2048
 raw_audio_length: 256000
 
-path_to_cache: ".."
+path_to_cache: "/fsx/homes/Artem.Shelmanov@mbzuai.ac.ae/.cache"
 
 allow_tf32: True
 
@@ -49,23 +49,23 @@ quantizer:
     n_new_tokens: 4096
   asr:
     - quantizer: speech
-      n_codebooks: 1
+      n_codebooks: 3
     - quantizer: wav
       n_codebooks: 1
 
   tts:
     - quantizer: speech
-      n_codebooks: 3
+      n_codebooks: 5
 
 # Training settings
-train_batch_size: 8
+train_batch_size: 4
 eval_batch_size: 1
-learning_rate: 2e-4
+learning_rate: 1e-5
 gradient_accumulation_steps: 8
 lr_scheduler_type: "cosine"
 num_train_epochs: 10
 num_warmup_steps: 10
-checkpointing_steps: 1000
+checkpointing_steps: 2000
 logging_steps: 20
 weight_decay: 0.1
 max_grad_norm: 0.25

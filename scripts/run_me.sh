@@ -1,4 +1,5 @@
-CUDA_VISIBLE_DEVICES=2 PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256 \
+PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:256 TOKENIZERS_PARALLELISM=false \
 accelerate launch \
+    --main_process_port 29501 \
     --config_file configs/accelerate.yaml \
     train.py --config configs/asr_tts.yaml
