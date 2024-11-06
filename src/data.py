@@ -19,20 +19,17 @@ class Vikhr4oDatasetBase(Dataset):
         self.max_seq_length = config["max_seq_length"]
         self.n_special_tokens = config["n_special_tokens"]
 
-        self.soa = tokenizer(
-            config["start_audio_token"],
-            return_tensors="pt"
-        )["input_ids"][:, -1:]
+        self.soa = tokenizer(config["start_audio_token"], return_tensors="pt")[
+            "input_ids"
+        ][:, -1:]
 
-        self.eoa = tokenizer(
-            config["end_audio_token"],
-            return_tensors="pt"
-        )["input_ids"][:, -1:]
+        self.eoa = tokenizer(config["end_audio_token"], return_tensors="pt")[
+            "input_ids"
+        ][:, -1:]
 
-        self.eos = tokenizer(
-            config["end_sequence_token"],
-            return_tensors="pt"
-        )["input_ids"][:, -1:]
+        self.eos = tokenizer(config["end_sequence_token"], return_tensors="pt")[
+            "input_ids"
+        ][:, -1:]
 
     def __len__(self):
         return len(self.dataset)
@@ -72,10 +69,7 @@ class Vikhr4oDatasetBase(Dataset):
             audio_length -= audio_length % self.n_codebooks
 
         padding_size = (
-                self.max_seq_length
-                - text_length
-                - audio_length
-                - self.n_special_tokens
+            self.max_seq_length - text_length - audio_length - self.n_special_tokens
         )
         padding = torch.zeros((1, padding_size), dtype=torch.int64)
 
@@ -119,9 +113,13 @@ class Vikhr4oDatasetBase(Dataset):
 class Vikhr4oDatasetVoiceDescription(Vikhr4oDatasetBase):
     def get_text_tokens(self, row):
         if self.asr:
-            text = "'{text}' is said with {voice_dsc}".format(text=row["text"], voice_dsc=row["text_description"])
+            text = "'{text}' is said with {voice_dsc}".format(
+                text=row["text"], voice_dsc=row["text_description"]
+            )
         else:
-            text = "Say '{text}' with {voice_dsc}".format(text=row["text"], voice_dsc=row["text_description"])
+            text = "Say '{text}' with {voice_dsc}".format(
+                text=row["text"], voice_dsc=row["text_description"]
+            )
         text_tokenized = self.tokenizer(text, return_tensors="pt")
         return text_tokenized["input_ids"]
 
@@ -158,11 +156,19 @@ def load_train_val_splits(dataset: str, tokenizer, quantizer, config):
         return [train_asr, train_tts], [val_asr, val_tts]
 
     elif "with_description" in dataset:
-        train_asr = Vikhr4oDatasetVoiceDescription(train_ds, tokenizer, quantizer, True, config)
-        val_asr = Vikhr4oDatasetVoiceDescription(val_ds, tokenizer, quantizer, True, config)
+        train_asr = Vikhr4oDatasetVoiceDescription(
+            train_ds, tokenizer, quantizer, True, config
+        )
+        val_asr = Vikhr4oDatasetVoiceDescription(
+            val_ds, tokenizer, quantizer, True, config
+        )
 
-        train_tts = Vikhr4oDatasetVoiceDescription(train_ds, tokenizer, quantizer, False, config)
-        val_tts = Vikhr4oDatasetVoiceDescription(val_ds, tokenizer, quantizer, False, config)
+        train_tts = Vikhr4oDatasetVoiceDescription(
+            train_ds, tokenizer, quantizer, False, config
+        )
+        val_tts = Vikhr4oDatasetVoiceDescription(
+            val_ds, tokenizer, quantizer, False, config
+        )
 
         return [train_asr, train_tts], [val_asr, val_tts]
 
@@ -176,13 +182,77 @@ def load_train_val_splits(dataset: str, tokenizer, quantizer, config):
         raise ValueError("Unknown dataset.")
 
 
-def load_data(datasets: list[str], tokenizer, quantizer, config) -> tuple[Dataset, Dataset]:
-    train_datasets = []
-    val_datasets = []
+def load_text_dataset(dataset_path: str, tokenizer, max_length: int):
+    dataset = load_dataset(dataset_path)
+    train, val = dataset["train"], dataset["validation"]
+    template = "{instruction}\n{response}"
 
-    for dataset in datasets:
+    train = train.map(
+        lambda example: {
+            "prompt": template.format(
+                instruction=example["instruction"] + example["input"],
+                response=example["output"],
+            )
+        }
+    )
+
+    val = val.map(
+        lambda example: {
+            "prompt": template.format(
+                instruction=example["instruction"] + example["input"],
+                response=example["output"],
+            )
+        }
+    )
+
+    train_tokenized = train.map(
+        lambda examples: tokenizer(
+            examples["prompt"],
+            truncation=True,
+            padding="max_length",
+            max_length=max_length,
+        ),
+        batched=True,
+    )
+
+    val_tokenized = val.map(
+        lambda examples: tokenizer(
+            examples["prompt"],
+            truncation=True,
+            padding="max_length",
+            max_length=max_length,
+        ),
+        batched=True,
+    )
+
+    train_tokenized = train_tokenized.map(lambda x: {"labels": x["input_ids"]})
+    val_tokenized = val_tokenized.map(lambda x: {"labels": x["input_ids"]})
+
+    train_tokenized.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"]
+    )
+    val_tokenized.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"]
+    )
+
+    return train_tokenized, val_tokenized
+
+
+def load_data(
+    audio_datasets: list[str], tokenizer, quantizer, config
+) -> tuple[Dataset, Dataset]:
+    train_datasets: list[Dataset] = []
+    val_datasets: list[Dataset] = []
+
+    for dataset in audio_datasets:
         train, val = load_train_val_splits(dataset, tokenizer, quantizer, config)
         train_datasets.extend(train)
         val_datasets.extend(val)
+
+    if len(config["text_data"]):
+        for text_ds in config["text_data"]:
+            train, val = load_text_dataset(text_ds, tokenizer, config["max_seq_length"])
+            train_datasets.append(train)
+            val_datasets.append(val)
 
     return ConcatDataset(train_datasets), ConcatDataset(val_datasets)

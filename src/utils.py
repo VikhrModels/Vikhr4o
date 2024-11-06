@@ -15,7 +15,7 @@ def freeze_entire_model(model):
     return model
 
 
-'''
+"""
 5,
         6,
         7,
@@ -29,17 +29,17 @@ def freeze_entire_model(model):
         20,
         0,
         25,
-'''
+"""
 
 
 def freeze(
-        model,
-        freeze_emb=False,
-        freeze_ln=True,
-        freeze_attn=True,
-        freeze_ff=True,
-        freeze_ff_layers=None,  # None means all or no layers, depending on freeze_ff
-        freeze_other=True,
+    model,
+    freeze_emb=False,
+    freeze_ln=True,
+    freeze_attn=True,
+    freeze_ff=True,
+    freeze_ff_layers=None,  # None means all or no layers, depending on freeze_ff
+    freeze_other=True,
 ):
     if freeze_ff_layers is not None and not isinstance(freeze_ff_layers, (list, set)):
         raise ValueError("freeze_ff_layers must be a list or set of layer indices")
@@ -92,13 +92,14 @@ def get_audio_padding_tokens(quantizer, device):
 
 
 def decode_audio(
-        tokens,
-        quantizer,
-        n_original_tokens,
-        n_codebooks,
-        start_audio_token_id,
-        end_audio_token_id,
-        device="cuda"):
+    tokens,
+    quantizer,
+    n_original_tokens,
+    n_codebooks,
+    start_audio_token_id,
+    end_audio_token_id,
+    device="cuda",
+):
     # find start and end indices of audio tokens
     start = torch.nonzero(tokens == start_audio_token_id)
     end = torch.nonzero(tokens == end_audio_token_id)
@@ -113,7 +114,9 @@ def decode_audio(
     if reminder:
         # pad if last frame is incomplete; needed for sppechtokenizer only
         pad_tokens = get_audio_padding_tokens(quantizer, device)
-        audio_tokens = torch.cat([audio_tokens, pad_tokens[n_codebooks - reminder:]], dim=0)
+        audio_tokens = torch.cat(
+            [audio_tokens, pad_tokens[n_codebooks - reminder :]], dim=0
+        )
 
     transposed = audio_tokens.view(-1, n_codebooks).t()
     codes = transposed.view(n_codebooks, 1, -1).to(device)
@@ -168,8 +171,14 @@ def prepare_parler_tts_with_description(cache_dir) -> tuple[Dataset, Dataset]:
     train_audio, val_audio = audio["train.clean.100"], audio["dev.clean"]
 
     columns = ["id", "text", "path", "text_description"]
-    raw = load_dataset("parler-tts/libritts-r-filtered-speaker-descriptions", 'clean', cache_dir=cache_dir)
-    processed = raw.remove_columns(list(set(raw.column_names["dev.clean"]) - set(columns)))
+    raw = load_dataset(
+        "parler-tts/libritts-r-filtered-speaker-descriptions",
+        "clean",
+        cache_dir=cache_dir,
+    )
+    processed = raw.remove_columns(
+        list(set(raw.column_names["dev.clean"]) - set(columns))
+    )
     train_text, val_text = processed["train.clean.100"], processed["dev.clean"]
 
     assert train_audio["id"] == train_text["id"] and val_audio["id"] == val_text["id"]
@@ -177,22 +186,30 @@ def prepare_parler_tts_with_description(cache_dir) -> tuple[Dataset, Dataset]:
     audio_features_train = train_audio["audio"]
     audio_features_val = val_audio["audio"]
 
-    train_text = train_text.map(lambda x, i: {"audio": audio_features_train[i]}, with_indices=True,
-                                cache_file_name="cache/merge_train")
-    val_text = val_text.map(lambda x, i: {"audio": audio_features_val[i]}, with_indices=True,
-                            cache_file_name="cache/merge_val")
+    train_text = train_text.map(
+        lambda x, i: {"audio": audio_features_train[i]},
+        with_indices=True,
+        cache_file_name="cache/merge_train",
+    )
+    val_text = val_text.map(
+        lambda x, i: {"audio": audio_features_val[i]},
+        with_indices=True,
+        cache_file_name="cache/merge_val",
+    )
     return train_text, val_text
 
 
 def prepare_homebrewltd(cache_dir) -> tuple[Dataset, Dataset]:
-    dataset = load_dataset("homebrewltd/instruction-speech-encodec-v1.5",
-                           "default", cache_dir=cache_dir)["train"]
+    dataset = load_dataset(
+        "homebrewltd/instruction-speech-encodec-v1.5", "default", cache_dir=cache_dir
+    )["train"]
 
     dataset = dataset.rename_column("answer", "text")
     splits = dataset.train_test_split(test_size=0.1)
 
-    return splits["train"].select(range(len(splits["train"]) // 10)), splits["test"].select(
-        range(len(splits["test"]) // 10))
+    return splits["train"].select(range(len(splits["train"]) // 10)), splits[
+        "test"
+    ].select(range(len(splits["test"]) // 10))
 
 
 def prepare_audio_captions(cache_dir) -> tuple[Dataset, Dataset]:
@@ -222,7 +239,7 @@ def get_last_checkpoint(save_dir):
 
 
 def save_checkpoint(
-        model, accelerator, tokenizer, optimizer, scheduler, save_dir, checkpointing_steps
+    model, accelerator, tokenizer, optimizer, scheduler, save_dir, checkpointing_steps
 ):
     accelerator.wait_for_everyone()
 
@@ -257,8 +274,8 @@ def fix_checkpoint(model, checkpoint_path):
     checkpoint_path += "/pytorch_model.bin"
     state_dict = torch.load(checkpoint_path, map_location="cpu")
 
-    if 'state_dict' in state_dict:
-        state_dict = state_dict['state_dict']
+    if "state_dict" in state_dict:
+        state_dict = state_dict["state_dict"]
 
     new_state_dict = {}
     for k, v in state_dict.items():

@@ -32,10 +32,14 @@ class AudioTokenizer:
     def quantize(self, row, quantizer):
         if quantizer["quantizer"] == "speech":
             raw_tokens = torch.tensor(row["audio_tokens_speech"])
-            audio_tokens = raw_tokens[:quantizer["n_codebooks"]] + self.tokens_config["speech"]
+            audio_tokens = (
+                raw_tokens[: quantizer["n_codebooks"]] + self.tokens_config["speech"]
+            )
         elif quantizer["quantizer"] == "wav":
             raw_tokens = torch.tensor(row["audio_tokens_wav"])
-            audio_tokens = raw_tokens[:quantizer["n_codebooks"]] + self.tokens_config["wav"]
+            audio_tokens = (
+                raw_tokens[: quantizer["n_codebooks"]] + self.tokens_config["wav"]
+            )
         else:
             raise ValueError("Unknown quantizer.")
 

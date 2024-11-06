@@ -15,7 +15,11 @@ from transformers import (
     default_data_collator,
     get_scheduler,
 )
-from accelerate import Accelerator, DistributedDataParallelKwargs, InitProcessGroupKwargs
+from accelerate import (
+    Accelerator,
+    DistributedDataParallelKwargs,
+    InitProcessGroupKwargs,
+)
 
 from src.data import load_data
 from src.tokenizer import AudioTokenizer, get_start_tokens
@@ -42,9 +46,9 @@ start_audio_token = config["start_audio_token"]
 end_audio_token = config["end_audio_token"]
 
 path_to_cache = config["path_to_cache"]
-checkpointing_steps = int(config['checkpointing_steps'])
+checkpointing_steps = int(config["checkpointing_steps"])
 
-max_grad_norm = float(config['max_grad_norm'])
+max_grad_norm = float(config["max_grad_norm"])
 torch.backends.cuda.matmul.allow_tf32 = config["allow_tf32"]
 torch.backends.cudnn.allow_tf32 = config["allow_tf32"]
 
@@ -52,15 +56,15 @@ wandb.login(key="3b038aadf7261a1dddf7802a5e9a9ed81f6911dc")
 
 
 def train(
-        model,
-        dataloader,
-        accelerator,
-        optimizer,
-        lr_scheduler,
-        completed_steps,
-        progress_bar,
-        max_train_steps,
-        save_dir
+    model,
+    dataloader,
+    accelerator,
+    optimizer,
+    lr_scheduler,
+    completed_steps,
+    progress_bar,
+    max_train_steps,
+    save_dir,
 ):
     model.train()
     total_loss = 0
@@ -96,7 +100,15 @@ def train(
             acc_loss = 0
 
             if completed_steps % checkpointing_steps == 0:
-                save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler, save_dir, checkpointing_steps)
+                save_checkpoint(
+                    model,
+                    accelerator,
+                    tokenizer,
+                    optimizer,
+                    lr_scheduler,
+                    save_dir,
+                    checkpointing_steps,
+                )
 
             torch.cuda.empty_cache()
 
@@ -107,12 +119,12 @@ def train(
 
 
 def eval(
-        model,
-        dataloader,
-        accelerator,
-        epoch,
-        completed_steps,
-        train_loss,
+    model,
+    dataloader,
+    accelerator,
+    epoch,
+    completed_steps,
+    train_loss,
 ):
     model.eval()
     losses = []
@@ -124,7 +136,11 @@ def eval(
             # Forward pass
             outputs = model(**batch)
             loss = outputs.loss
-            losses.append(accelerator.gather_for_metrics(loss.repeat(int(config["eval_batch_size"]))))
+            losses.append(
+                accelerator.gather_for_metrics(
+                    loss.repeat(int(config["eval_batch_size"]))
+                )
+            )
 
             del outputs
 
@@ -156,8 +172,10 @@ if __name__ == "__main__":
         gradient_accumulation_steps=int(config["gradient_accumulation_steps"]),
         mixed_precision="no",
         log_with="wandb",
-        kwargs_handlers=[DistributedDataParallelKwargs(find_unused_parameters=False),
-                         InitProcessGroupKwargs(timeout=timeout)],
+        kwargs_handlers=[
+            DistributedDataParallelKwargs(find_unused_parameters=False),
+            InitProcessGroupKwargs(timeout=timeout),
+        ],
     )
     device = accelerator.device
 
@@ -166,14 +184,26 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=path_to_cache)
     if checkpoint_path is not None:
         model = AutoModelForCausalLM.from_pretrained(
-            checkpoint_path, attn_implementation="sdpa", torch_dtype=torch.bfloat16, cache_dir=path_to_cache
+            checkpoint_path,
+            attn_implementation="sdpa",
+            torch_dtype=torch.bfloat16,
+            cache_dir=path_to_cache,
         )
     else:
         model = AutoModelForCausalLM.from_pretrained(
-            base_model, attn_implementation="sdpa", torch_dtype=torch.bfloat16, cache_dir=path_to_cache
+            base_model,
+            attn_implementation="sdpa",
+            torch_dtype=torch.bfloat16,
+            cache_dir=path_to_cache,
         )
 
     model.gradient_checkpointing_enable()
+
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({'pad_token': '[PAD]'})  # '[PAD]' is the new padding token
+        tokenizer.pad_token = '[PAD]'
+        config["n_special_tokens"] += 1
+
     tokenizer.add_special_tokens(
         {"additional_special_tokens": [start_audio_token, end_audio_token]}
     )
@@ -186,27 +216,27 @@ if __name__ == "__main__":
     tokens_config = get_start_tokens(config["quantizer"], n_tokens)
     quantizer = AudioTokenizer(config["quantizer"], tokens_config)
 
-    codebook_size = config["quantizer"]["speech"]["n_new_tokens"] + config["quantizer"]["wav"]["n_new_tokens"]
+    codebook_size = (
+        config["quantizer"]["speech"]["n_new_tokens"]
+        + config["quantizer"]["wav"]["n_new_tokens"]
+    )
     print("New tokens:", codebook_size)
     train_dataset, val_dataset = load_data(data, tokenizer, quantizer, config)
 
     model.resize_token_embeddings(n_tokens + codebook_size)
-
-    # if checkpoint_path is not None:
-        # model = fix_checkpoint(model, checkpoint_path)
 
     train_dataloader = DataLoader(
         train_dataset,
         shuffle=True,
         collate_fn=default_data_collator,
         batch_size=int(config["train_batch_size"]),
-        num_workers=16
+        num_workers=16,
     )
     eval_dataloader = DataLoader(
         val_dataset,
         collate_fn=default_data_collator,
         batch_size=int(config["eval_batch_size"]),
-        num_workers=16
+        num_workers=16,
     )
 
     no_decay = ["bias", "layer_norm.weight"]
@@ -229,7 +259,8 @@ if __name__ == "__main__":
         },
     ]
     optimizer = torch.optim.AdamW(
-        optimizer_grouped_parameters, lr=float(config["learning_rate"]),  # fused=True
+        optimizer_grouped_parameters,
+        lr=float(config["learning_rate"]),  # fused=True
     )
 
     num_update_steps_per_epoch = math.ceil(
@@ -271,13 +302,14 @@ if __name__ == "__main__":
     num_train_epochs = math.ceil(max_train_steps / num_update_steps_per_epoch)
 
     accelerator.init_trackers(
-            config["wandb_project_name"], {"lr_scheduler_type": config["lr_scheduler_type"]}, 
+        config["wandb_project_name"],
+        {"lr_scheduler_type": config["lr_scheduler_type"]},
     )
 
     total_batch_size = (
-            config["train_batch_size"]
-            * accelerator.num_processes
-            * int(config["gradient_accumulation_steps"])
+        config["train_batch_size"]
+        * accelerator.num_processes
+        * int(config["gradient_accumulation_steps"])
     )
 
     print("***** Running training *****")
@@ -306,7 +338,7 @@ if __name__ == "__main__":
             completed_steps,
             progress_bar,
             max_train_steps,
-            exp_save_dir
+            exp_save_dir,
         )
         print(f"EPOCH {epoch + 1} train loss:", train_loss)
         eval(
@@ -318,4 +350,12 @@ if __name__ == "__main__":
             train_loss,
         )
 
-    save_checkpoint(model, accelerator, tokenizer, optimizer, lr_scheduler, exp_save_dir, checkpointing_steps)
+    save_checkpoint(
+        model,
+        accelerator,
+        tokenizer,
+        optimizer,
+        lr_scheduler,
+        exp_save_dir,
+        checkpointing_steps,
+    )

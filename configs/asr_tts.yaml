@@ -6,10 +6,13 @@ data:
   - Vikhrmodels/librispeech_quantized
   - Vikhrmodels/parler_tts_with_description_quantized
 
+text_data:
+  - llm-blender/mix-instruct
 
-start_audio_token: "<soa>"
-end_audio_token: "<eoa>"
-end_sequence_token: "<eos>"
+
+start_audio_token: "<|start_of_audio|>"
+end_audio_token: "<|end_of_audio|>"
+end_sequence_token: "<|end_of_text|>"
 n_special_tokens: 3
 
 max_seq_length: 2048
