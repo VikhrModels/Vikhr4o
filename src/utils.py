@@ -201,15 +201,13 @@ def prepare_parler_tts_with_description(cache_dir) -> tuple[Dataset, Dataset]:
 
 def prepare_homebrewltd(cache_dir) -> tuple[Dataset, Dataset]:
     dataset = load_dataset(
-        "homebrewltd/instruction-speech-encodec-v1.5", "default", cache_dir=cache_dir
+        "homebrewltd/instruction-speech-encodec-v1", "default", cache_dir=cache_dir
     )["train"]
 
     dataset = dataset.rename_column("answer", "text")
     splits = dataset.train_test_split(test_size=0.1)
 
-    return splits["train"].select(range(len(splits["train"]) // 10)), splits[
-        "test"
-    ].select(range(len(splits["test"]) // 10))
+    return splits["train"], splits["test"]
 
 
 def prepare_audio_captions(cache_dir) -> tuple[Dataset, Dataset]:

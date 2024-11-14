@@ -8,7 +8,7 @@ import torch
 from datasets import DatasetDict
 from speechtokenizer import SpeechTokenizer
 
-from src.data import DATASET_2_LOAD_FUNCTION
+from src.utils import DATASET_2_LOAD_FUNCTION
 
 
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
