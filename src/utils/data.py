@@ -77,27 +77,18 @@ def prepare_homebrewltd(cache_dir) -> tuple[Dataset, Dataset]:
     return splits["train"], splits["test"]
 
 
-def prepare_audio_captions(cache_dir) -> tuple[Dataset, Dataset]:
-    train = AudioCaps(
-        root=cache_dir,
-        subset="train",
-        download=False,
-        audio_format="wav",
-        download_audio=False,  # this will only download labels and metadata files
-    )
-    val = AudioCaps(
-        root=cache_dir,
-        subset="val",
-        download=False,
-        audio_format="wav",
-        download_audio=False,  # this will only download labels and metadata files
-    )
-
-    return train, val
+def prepare_emilia(cache_dir) -> tuple[Dataset, Dataset]:
+    dataset = load_dataset("amphion/Emilia-Dataset", split="en", cache_dir=cache_dir)["train"]
+    shuffled = dataset.shuffle(seed=42)
+    subset = shuffled.select(range(100_000))
+    subset = subset.map(lambda row: {"text": row["json"]["text"]})
+    subset = subset.rename_column("__key__", "index")
+    splits = subset.train_test_split(test_size=0.1)
+    return splits["train"], splits["test"]
 
 
 DATASET_2_LOAD_FUNCTION = {
-    "audiocaps": prepare_audio_captions,
+    "emilia": prepare_emilia,
     "homebrewltd": prepare_homebrewltd,
     "librispeech": prepare_librispeech,
     "parler-tts": prepare_parler_tts,
