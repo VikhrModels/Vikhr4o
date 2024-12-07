@@ -20,22 +20,22 @@ class Vikhr4oDatasetBase(Dataset):
         self.n_special_tokens = config["n_special_tokens"]
 
         self.soa = tokenizer(config["start_audio_token"], return_tensors="pt")[
-            "input_ids"
-        ][:, -1:]
+                       "input_ids"
+                   ][:, -1:]
 
         self.eoa = tokenizer(config["end_audio_token"], return_tensors="pt")[
-            "input_ids"
-        ][:, -1:]
+                       "input_ids"
+                   ][:, -1:]
 
         self.eos = tokenizer(config["end_sequence_token"], return_tensors="pt")[
-            "input_ids"
-        ][:, -1:]
+                       "input_ids"
+                   ][:, -1:]
 
     def __len__(self):
         return len(self.dataset)
 
     def get_text_tokens(self, row):
-        text_tokenized = self.tokenizer(row["text"], return_tensors="pt")
+        text_tokenized = self.tokenizer(row["text"].lower(), return_tensors="pt")
         return text_tokenized["input_ids"]
 
     def __getitem__(self, idx):
@@ -47,7 +47,7 @@ class Vikhr4oDatasetBase(Dataset):
 
             audio_length = audio_input_tokens.shape[-1]
             if audio_length > self.max_seq_length - 64:
-                audio_length = self.max_seq_length // 3 * 2
+                audio_length = self.max_seq_length // 6 * 5
 
             audio_length -= audio_length % self.n_codebooks
             text_length = min(
@@ -69,9 +69,9 @@ class Vikhr4oDatasetBase(Dataset):
             audio_length -= audio_length % self.n_codebooks
 
         padding_size = (
-            self.max_seq_length - text_length - audio_length - self.n_special_tokens
+                self.max_seq_length - text_length - audio_length - self.n_special_tokens
         )
-        padding = torch.zeros((1, padding_size), dtype=torch.int64)
+        padding = torch.full((1, padding_size), self.tokenizer.pad_token_id, dtype=torch.int64)
 
         if self.asr:
             tokens = torch.cat(
@@ -99,7 +99,7 @@ class Vikhr4oDatasetBase(Dataset):
             ).squeeze(0)
 
         attention_mask = torch.cat(
-            [padding, torch.ones((1, self.max_seq_length - padding_size))],
+            [torch.zeros(padding.shape), torch.ones((1, self.max_seq_length - padding_size))],
             dim=1,
         ).squeeze(0)
 
@@ -124,15 +124,27 @@ class Vikhr4oDatasetVoiceDescription(Vikhr4oDatasetBase):
         return text_tokenized["input_ids"]
 
 
+def prepare_text_field(row):
+    return {"text": row["json"]["text"]}
+
+
 def load_tokenized_data(data_path: str):
     speech_path = data_path + "-speech"
-    wav_path = data_path + "-wav"
+    wav_path = data_path + "-wav-unify"
 
     speech = load_dataset(speech_path)
     train_speech, val_speech = speech["train"], speech["validation"]
 
+    if "text" not in train_speech.column_names:
+        train_speech = train_speech.map(prepare_text_field)
+        val_speech = val_speech.map(prepare_text_field)
+
     wav = load_dataset(wav_path)
     train_wav, val_wav = wav["train"], wav["validation"]
+
+    if "text" not in train_wav.column_names:
+        train_wav = train_wav.map(prepare_text_field)
+        val_wav = val_wav.map(prepare_text_field)
 
     train = train_speech.rename_column("audio_tokens", "audio_tokens_speech")
     train = train.add_column("audio_tokens_wav", train_wav["audio_tokens"])
@@ -146,7 +158,7 @@ def load_tokenized_data(data_path: str):
 def load_train_val_splits(dataset: str, tokenizer, quantizer, config):
     train_ds, val_ds = load_tokenized_data(dataset)
 
-    if "librispeech" in dataset:
+    if "librispeech" in dataset or "emilia" in dataset:
         train_asr = Vikhr4oDatasetBase(train_ds, tokenizer, quantizer, True, config)
         val_asr = Vikhr4oDatasetBase(val_ds, tokenizer, quantizer, True, config)
 
@@ -239,7 +251,7 @@ def load_text_dataset(dataset_path: str, tokenizer, max_length: int):
 
 
 def load_data(
-    audio_datasets: list[str], tokenizer, quantizer, config
+        audio_datasets: list[str], tokenizer, quantizer, config
 ) -> tuple[Dataset, Dataset]:
     train_datasets: list[Dataset] = []
     val_datasets: list[Dataset] = []

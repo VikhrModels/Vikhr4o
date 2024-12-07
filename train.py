@@ -200,8 +200,10 @@ if __name__ == "__main__":
     model.gradient_checkpointing_enable()
 
     if tokenizer.pad_token is None:
-        tokenizer.add_special_tokens({'pad_token': '[PAD]'})  # '[PAD]' is the new padding token
-        tokenizer.pad_token = '[PAD]'
+        tokenizer.add_special_tokens(
+            {"pad_token": "[PAD]"}
+        )  # '[PAD]' is the new padding token
+        tokenizer.pad_token = "[PAD]"
         config["n_special_tokens"] += 1
 
     tokenizer.add_special_tokens(

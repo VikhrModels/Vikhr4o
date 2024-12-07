@@ -91,7 +91,7 @@ def get_audio_padding_tokens(quantizer, device):
     return {"audio_tokens": codes.squeeze(1)}
 
 
-def decode_audio(
+def decode_audio_wav(
     tokens,
     quantizer,
     n_original_tokens,
@@ -121,9 +121,8 @@ def decode_audio(
     transposed = audio_tokens.view(-1, n_codebooks).t()
     codes = transposed.view(n_codebooks, 1, -1).to(device)
 
-    features = quantizer.codes_to_features(codes).to("cpu")
-    quantizer = quantizer.to("cpu")
-    bandwidth_id = torch.tensor([0])
+    features = quantizer.codes_to_features(codes)
+    bandwidth_id = torch.tensor([0], device=device)
 
     audio = quantizer.decode(features, bandwidth_id=bandwidth_id).squeeze(0)
 
@@ -132,6 +131,46 @@ def decode_audio(
     torch.cuda.empty_cache()
 
     return AudioSignal(audio.detach().cpu().numpy(), 24000)
+
+
+def decode_audio_speech(
+    tokens,
+    quantizer,
+    n_original_tokens,
+    n_codebooks,
+    start_audio_token_id,
+    end_audio_token_id,
+    device="cuda",
+):
+    # find start and end indices of audio tokens
+    start = torch.nonzero(tokens == start_audio_token_id)
+    end = torch.nonzero(tokens == end_audio_token_id)
+
+    start = start[0, -1] + 1 if len(start) else 0
+    end = end[0, -1] if len(end) else tokens.shape[-1]
+
+    # substract length of original vocabulary -> tokens in range [0, 1024)
+    audio_tokens = tokens[start:end] % n_original_tokens
+    print(audio_tokens.shape)
+    reminder = audio_tokens.shape[-1] % n_codebooks
+
+    if reminder:
+        # pad if last frame is incomplete; needed for sppechtokenizer only
+        pad_tokens = get_audio_padding_tokens(quantizer, device)
+        audio_tokens = torch.cat(
+            [audio_tokens, pad_tokens[n_codebooks - reminder :]], dim=0
+        )
+
+    transposed = audio_tokens.view(-1, n_codebooks).t()
+    codes = transposed.view(n_codebooks, 1, -1).to(device)
+
+    audio = quantizer.decode(codes).squeeze(0)
+
+    del tokens
+    del audio_tokens
+    torch.cuda.empty_cache()
+
+    return AudioSignal(audio.detach().cpu().numpy(), 16000)
 
 
 def prepare_librispeech(cache_dir) -> tuple[Dataset, Dataset]:
