@@ -23,7 +23,7 @@ from accelerate import (
 
 from src.data import load_data
 from src.tokenizer import AudioTokenizer, get_start_tokens
-from src.utils import save_checkpoint, fix_checkpoint, get_exp_name
+from src.utils import save_checkpoint, get_exp_name
 
 # Parse arguments
 parser = argparse.ArgumentParser(description="Train a model with configuration.")

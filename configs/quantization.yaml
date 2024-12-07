@@ -1,15 +1,8 @@
 raw_data: "librispeech"
-prepared_data_path: "Vikhrmodels/librispeech_quantized-wav"
+prepared_data_path: "librispeech_quantized-fish"
 
-start_audio_token: "<soa>"
-end_audio_token: "<eoa>"
-end_sequence_token: "<eos>"
-n_special_tokens: 3
+path_to_cache: ".."
 
-n_codebooks_tts: 3
-n_codebooks_asr: 1
-max_seq_length: 2048
-
-quantizer_config_path: "../WavTokenizer/configs/wavtokenizer_smalldata_frame40_3s_nq1_code4096_dim512_kmeans200_attn.yaml"
-quantizer_ckpt_path: "../audiotokenizer/WavTokenizer_small_600_24k_4096.ckpt"
-quantizer_type: "wav"
+quantizer_config_path: "firefly_gan_vq.yaml"
+quantizer_ckpt_path: "../checkpoints/fish-speech-1.5/firefly-gan-vq-fsq-8x1024-21hz-generator.pth"
+quantizer_type: "fish"

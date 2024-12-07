@@ -1,7 +1,6 @@
-import numpy as np
+from typing import Optional
 
 import torch
-import torchaudio
 
 from fish_speech.tokenizer import *
 from tools.llama.generate import *
@@ -28,22 +27,49 @@ def load_encoder(checkpoint_path, precision, is_agent=False):
 
 
 class FishAudioTokenizer:
-    def __init__(self, encoder_path: str, decoder_path: str,
-                 decoder_config: str, tokenizer_path: str) -> None:
-        self.tokenizer = FishTokenizer.from_pretrained(tokenizer_path)
-        self.semantic_tokenizer, self.decoding_f = load_encoder(encoder_path,
-                                                                torch.bfloat16,
-                                                                )
-        self.audio_tokenizer = load_vqgan(decoder_config, decoder_path)
+    def __init__(
+        self,
+        decoder_path: str,
+        decoder_config: str,
+        encoder_path: Optional[str] = None,
+        tokenizer_path: Optional[str] = None
+    ) -> None:
 
-        with torch.device(device):
-            self.semantic_tokenizer.setup_caches(
-                max_batch_size=1,
-                max_seq_len=self.semantic_tokenizer.config.max_seq_len,
-                dtype=next(self.semantic_tokenizer.parameters()).dtype,
+        self.audio_tokenizer = load_vqgan(decoder_config, decoder_path)
+        self.sample_rate = self.audio_tokenizer.spec_transform.sample_rate
+
+        if tokenizer_path is not None:
+            self.tokenizer = FishTokenizer.from_pretrained(tokenizer_path)
+
+        if encoder_path is not None:
+            self.semantic_tokenizer, self.decoding_f = load_encoder(
+                encoder_path, torch.bfloat16,
             )
 
-    def encode_text(self, text: str) -> list[int]:
+            with torch.device(device):
+                self.semantic_tokenizer.setup_caches(
+                    max_batch_size=1,
+                    max_seq_len=self.semantic_tokenizer.config.max_seq_len,
+                    dtype=next(self.semantic_tokenizer.parameters()).dtype,
+                )
+
+    @property
+    def semantic_codebook_size(self):
+        return self.semantic_tokenizer.config.codebook_size
+
+    @property
+    def semantic_num_codebooks(self):
+        return self.semantic_tokenizer.config.num_codebooks
+
+    @property
+    def codebook_size(self):
+        return self.audio_tokenizer.quantizer.residual_fsq.codebook_size
+
+    @property
+    def num_codebooks(self):
+        return len(self.audio_tokenizer.quantizer.residual_fsq.rvqs)
+
+    def encode_text(self, text: str) -> torch.Tensor:
         generator = generate_long(
             model=self.semantic_tokenizer,
             device=device,
@@ -51,7 +77,6 @@ class FishAudioTokenizer:
             text=text,
         )
 
-        idx = 0
         codes = []
 
         for response in generator:
@@ -60,21 +85,14 @@ class FishAudioTokenizer:
 
             elif response.action == "next":
                 if codes:
-                    np.save(f"codes_{idx}.npy", torch.cat(codes, dim=1).cpu().numpy())
-                    print(f"Saved codes to codes_{idx}.npy")
-                codes = []
-                idx += 1
+                    codes = torch.cat(codes, dim=1)
+                break
             else:
                 print(f"Error: {response}")
 
         return codes
 
-    def encode_audio(self, audios: torch.Tensor, sr: int) -> list[int]:
-        if sr != self.audio_tokenizer.spec_transform.sample_rate:
-            audios = torchaudio.functional.resample(
-                audios, orig_freq=sr, new_freq=self.audio_tokenizer.spec_transform.sample_rate
-            )
-
+    def encode_audio(self, audios: torch.Tensor) -> torch.Tensor:
         audio_lengths = torch.tensor([audios.shape[2]], device=device, dtype=torch.long)
         tokens = self.audio_tokenizer.encode(audios, audio_lengths)[0][0]
         return tokens
@@ -87,6 +105,5 @@ class FishAudioTokenizer:
           indices=tokens[None], feature_lengths=feature_lengths
         )
 
-        audio_time = fake_audios.shape[-1] / self.audio_tokenizer.spec_transform.sample_rate
         fake_audio = fake_audios[0].float().detach().cpu()
-        torchaudio.save(output_path, fake_audio, self.audio_tokenizer.spec_transform.sample_rate)
+        return fake_audio
