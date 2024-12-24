@@ -95,7 +95,9 @@ def quantize_fishtokenizer(row: dict[str, Any], quantizer: FishAudioTokenizer):
     audio_tokens = audio_tokens.cpu()
     semantic_tokens = semantic_tokens.cpu()
 
-    return {"audio_tokens": audio_tokens.numpy(), "semantic_tokens": semantic_tokens.numpy()}
+    return {"audio_tokens": audio_tokens.numpy(),
+            "semantic_tokens": semantic_tokens.numpy()
+            }
 
 
 def verify_decoding(example, quantizer, quantizer_type: str):
@@ -113,18 +115,18 @@ def verify_decoding(example, quantizer, quantizer_type: str):
 
     elif quantizer_type == "wav":
         codes = quantize_wavtokenizer(example, quantizer)["audio_tokens"]
-        codes = torch.tensor(codes, dtype=torch.float32, device=device)
+        codes = torch.tensor(codes, dtype=torch.long, device=device)
 
         audio = decode_audio_wav(
             codes,
             quantizer,
-            quantizer.feature_extractor.quantizer.bins + 1,
+            quantizer.feature_extractor.encodec.quantizer.bins + 1,
             1,
         )
 
     elif quantizer_type == "fish":
         codes = quantize_fishtokenizer(example, quantizer)["audio_tokens"]
-        codes = torch.tensor(codes, dtype=torch.float32, device=device)
+        codes = torch.tensor(codes, dtype=torch.long, device=device)
         flattened = codes.t().contiguous().view(1, -1)
 
         audio = decode_audio_fish(

@@ -97,7 +97,7 @@ class FishAudioTokenizer:
         tokens = self.audio_tokenizer.encode(audios, audio_lengths)[0][0]
         return tokens
 
-    def decode(self, tokens: torch.Tensor, output_path: str) -> str:
+    def decode(self, tokens: torch.Tensor) -> str:
         """tokens -> audio"""
         feature_lengths = torch.tensor([tokens.shape[1]], device=device)
 

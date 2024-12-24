@@ -1,4 +1,9 @@
-from datasets import Dataset, load_dataset, Value
+import os
+import subprocess
+from pathlib import Path
+
+from datasets import Audio, Dataset, load_dataset, Value
+from huggingface_hub import hf_hub_download
 
 
 def prepare_librispeech(cache_dir) -> tuple[Dataset, Dataset]:
@@ -78,12 +83,90 @@ def prepare_homebrewltd(cache_dir) -> tuple[Dataset, Dataset]:
 
 
 def prepare_emilia(cache_dir) -> tuple[Dataset, Dataset]:
-    dataset = load_dataset("amphion/Emilia-Dataset", split="en", cache_dir=cache_dir)["train"]
+    repo_id = "amphion/Emilia-Dataset"
+    file_list = [f"EN/EN-B{str(i).zfill(6)}.tar" for i in range(200)]
+
+    dataset = load_dataset(repo_id, data_files={"en": file_list}, split="en", cache_dir=cache_dir)
     shuffled = dataset.shuffle(seed=42)
     subset = shuffled.select(range(100_000))
     subset = subset.map(lambda row: {"text": row["json"]["text"]})
-    subset = subset.rename_column("__key__", "index")
-    splits = subset.train_test_split(test_size=0.1)
+    subset = subset.rename_columns({"__key__": "index", "mp3": "audio"})
+    splits = subset.train_test_split(test_size=0.1, seed=42)
+    return splits["train"], splits["test"]
+
+
+def download_clip(
+        video_identifier,
+        output_filename,
+        start_time,
+        end_time,
+        tmp_dir='/tmp/musiccaps',
+        num_attempts=5,
+        url_base='https://www.youtube.com/watch?v='
+):
+    status = False
+
+    command = f"""
+        yt-dlp --quiet --force-keyframes-at-cuts --no-warnings -x --audio-format wav -f bestaudio -o "{output_filename}" --download-sections "*{start_time}-{end_time}" "{url_base}{video_identifier}"
+    """.strip()
+
+    attempts = 0
+    while True:
+        try:
+            output = subprocess.check_output(command, shell=True,
+                                             stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as err:
+            attempts += 1
+            if attempts == num_attempts:
+                return status, err.output
+        else:
+            break
+
+    # Check if the video was successfully saved.
+    status = os.path.exists(output_filename)
+    return status, 'Downloaded'
+
+
+def prepare_musiccaps(cache_dir: str) -> tuple[Dataset, Dataset]:
+    ds = load_dataset('google/MusicCaps', split='train')
+    sampling_rate = 44100
+    limit = None
+    num_proc, writer_batch_size = 16, 1000
+
+    if limit is not None:
+        print(f"Limiting to {limit} examples")
+        ds = ds.select(range(limit))
+
+    data_dir = "../music_data"
+    data_dir = Path(data_dir)
+    data_dir.mkdir(exist_ok=True, parents=True)
+
+    def process(example):
+        outfile_path = str(data_dir / f"{example['ytid']}.wav")
+        status = True
+        if not os.path.exists(outfile_path):
+            status = False
+            status, log = download_clip(
+                example['ytid'],
+                outfile_path,
+                example['start_s'],
+                example['end_s'],
+            )
+
+        example['audio'] = outfile_path
+        example['download_status'] = status
+        return example
+
+    ds = ds.rename_column("caption", "text")
+    ds = ds.map(
+        process,
+        num_proc=num_proc,
+        writer_batch_size=writer_batch_size,
+        keep_in_memory=False
+    )
+    ds = ds.filter(lambda x: x["download_status"]).cast_column('audio', Audio(sampling_rate=sampling_rate))
+
+    splits = ds.train_test_split(test_size=0.1, seed=42)
     return splits["train"], splits["test"]
 
 
@@ -91,6 +174,7 @@ DATASET_2_LOAD_FUNCTION = {
     "emilia": prepare_emilia,
     "homebrewltd": prepare_homebrewltd,
     "librispeech": prepare_librispeech,
+    "musiccaps": prepare_musiccaps,
     "parler-tts": prepare_parler_tts,
     "parler_tts_with_description": prepare_parler_tts_with_description,
     "synthetic": prepare_synthetic,

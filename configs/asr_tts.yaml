@@ -5,6 +5,7 @@ save_dir: "./results"
 data:
   - Vikhrmodels/librispeech_quantized
   - Vikhrmodels/parler_tts_with_description_quantized
+  - Vikhrmodels/emilia_quantized-v1
 
 text_data:
   - llm-blender/mix-instruct
