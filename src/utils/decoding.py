@@ -118,15 +118,15 @@ def decode_audio_fish(
     # find audio start and end tokens
     start, end = get_audio_start_end_tokens(tokens, start_audio_token_id, end_audio_token_id)
 
-    # substract length of original vocabulary -> tokens in range [0, 1024)
+    # subtract length of original vocabulary -> tokens in range [0, 1024)
     audio_tokens = tokens[start:end] % n_original_tokens
     remainder = audio_tokens.shape[-1] % n_codebooks
 
     if remainder:
         # pad if last frame is incomplete, zero padding is used
-        pad_tokens = torch.zeros(n_codebooks - remainder, device="cuda", dtype=torch.long)
+        pad_tokens = torch.zeros((1, n_codebooks - remainder), device="cuda", dtype=torch.long)
         audio_tokens = torch.cat(
-            [audio_tokens, pad_tokens[n_codebooks - remainder:]], dim=0
+            [audio_tokens, pad_tokens], dim=0
         )
 
     transposed = audio_tokens.view(-1, n_codebooks).t()

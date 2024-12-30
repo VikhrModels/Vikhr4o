@@ -1,0 +1,8 @@
+raw_data: "librispeech"
+prepared_data_path: "librispeech_quantized-wav"
+
+path_to_cache: ".."
+
+quantizer_config_path: "../WavTokenizer/configs/wavtokenizer_smalldata_frame40_3s_nq1_code4096_dim512_kmeans200_attn.yaml"
+quantizer_ckpt_path: "../audiotokenizer/WavTokenizer_small_600_24k_4096.ckpt"
+quantizer_type: "wav"

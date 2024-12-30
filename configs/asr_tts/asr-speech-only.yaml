@@ -1,0 +1,79 @@
+base_model: "meta-llama/Llama-3.2-3B"
+checkpoint_path: null
+save_dir: "./results"
+
+data:
+  - Vikhrmodels/librispeech_quantized
+  - Vikhrmodels/parler_tts_with_description_quantized
+  - Vikhrmodels/emilia_quantized-v1
+
+text_data: []
+
+
+start_audio_token: "<|start_of_audio|>"
+end_audio_token: "<|end_of_audio|>"
+end_sequence_token: "<|end_of_text|>"
+n_special_tokens: 3
+
+max_seq_length: 2048
+raw_audio_length: 256000
+
+path_to_cache: ".."
+
+allow_tf32: True
+
+# Freezing settings
+freeze:
+    freeze_emb: False
+    freeze_ln: False
+    freeze_attn: False
+    freeze_ff: False
+    freeze_ff_layers:
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 12
+      - 23
+      - 14
+      - 18
+      - 19
+      - 20
+      - 0
+      - 25
+
+    freeze_other: False
+
+tasks:
+  - asr
+
+# Quantizer settings
+quantizer:
+  speech:
+    n_new_tokens: 1024
+  wav:
+    n_new_tokens: 0
+  asr:
+    - quantizer: speech
+      n_codebooks: 3
+
+  tts:
+    - quantizer: speech
+      n_codebooks: 3
+
+# Training settings
+train_batch_size: 6
+eval_batch_size: 1
+learning_rate: 1e-4
+gradient_accumulation_steps: 8
+lr_scheduler_type: "cosine"
+num_train_epochs: 10
+num_warmup_steps: 10
+checkpointing_steps: 1000
+logging_steps: 20
+weight_decay: 0.1
+max_grad_norm: 0.25
+
+# Logging settings
+wandb_project_name: "vikhr4o-llama-tiny"

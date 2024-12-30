@@ -4,6 +4,7 @@ import os
 import yaml
 
 from tqdm import tqdm
+from dotenv import load_dotenv
 import wandb
 
 import torch
@@ -49,10 +50,13 @@ path_to_cache = config["path_to_cache"]
 checkpointing_steps = int(config["checkpointing_steps"])
 
 max_grad_norm = float(config["max_grad_norm"])
+freeze_params = config["freeze"]
+
 torch.backends.cuda.matmul.allow_tf32 = config["allow_tf32"]
 torch.backends.cudnn.allow_tf32 = config["allow_tf32"]
 
-wandb.login(key="3b038aadf7261a1dddf7802a5e9a9ed81f6911dc")
+load_dotenv()
+wandb.login(key=os.getenv("WB_KEY"))
 
 
 def train(
@@ -277,12 +281,12 @@ if __name__ == "__main__":
         num_training_steps=max_train_steps * accelerator.num_processes,
     )
 
-    if checkpoint_path is not None:
+    if checkpoint_path is not None and os.path.exists(os.path.join(checkpoint_path, "optimizer.pt")):
         optim_state = torch.load(os.path.join(checkpoint_path, "optimizer.pt"))
-        sceduler_state = torch.load(os.path.join(checkpoint_path, "scheduler.pt"))
+        scheduler_state = torch.load(os.path.join(checkpoint_path, "scheduler.pt"))
 
         optimizer.load_state_dict(optim_state)
-        lr_scheduler.load_state_dict(sceduler_state)
+        lr_scheduler.load_state_dict(scheduler_state)
 
     # model = freeze(model, freeze_other=False, freeze_ff=True, freeze_ff_layers=[31])
 

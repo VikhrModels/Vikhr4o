@@ -6,22 +6,38 @@ Vikhr Salt is a multimodal model based on a pre-trained large language model, ex
 
 ## Model  Authors 
 
-Ksenya Sycheva, Konstantin Korolev, Aleksandr Nikolic
+Ksenia Sycheva, Konstantin Korolev, Aleksandr Nikolic
 ## Datasets 
 - [TEDLIUM](https://huggingface.co/datasets/LIUM/tedlium)
 - [Librispeech](https://huggingface.co/datasets/openslr/librispeech_asr)
 
 
 ## How to run
+### Preparing Data
+To tokenize data run [prepare_data.py](prepare_data.py). Configs for different tokenizers ([SpeechTokenizer](https://github.com/ZhangXInFD/SpeechTokenizer), [WavTokenizer](https://github.com/jishengpeng/WavTokenizer/), [FishTokenizer](https://github.com/fishaudio/fish-speech/)) are available in [this](configs/quantization) folder. 
+```
+python prepare_data.py --config configs/quantization/<your-tokenizer-config>.yaml
+
+```
+
+### Training
+It is possible to configure tokenization for TTS and ASR differently:
+- different number of tokens 
+- different tokenizers 
+
+To do that specify type of quantizer and number of codebooks for both tasks. Examples of configs can be found [here](configs/asr_tts).
+Notes:
+1. music/other non-speech data is only supported by [this](configs/quantization/quantization-wav-music.yaml) version of WavTokenizer
+2. WavTokenizer has fixed number of codebooks = 1, for SpeechTokenizer values between 1 and 8 can be chosen 
 
 for single gpu
 ```
-run_me_.sh
+source scripts/run_me.sh
 
 ```
 
 for multi gpu+ds2
 ```
-sh run_me_ds2.sh
+source scripts/run_me_ds2.sh
 
 ```

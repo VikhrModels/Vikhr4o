@@ -77,13 +77,15 @@ def save_checkpoint(
 def get_exp_name(config):
     name = config["base_model"].split("/")[-1]
 
-    name += "_asr"
-    for aq in config["quantizer"]["asr"]:
-        name += f"_{aq['quantizer']}_{aq['n_codebooks']}"
+    if "asr" in config["tasks"]:
+        name += "_asr"
+        for aq in config["quantizer"]["asr"]:
+            name += f"_{aq['quantizer']}_{aq['n_codebooks']}"
 
-    name += "_tts"
-    for tq in config["quantizer"]["tts"]:
-        name += f"_{tq['quantizer']}_{tq['n_codebooks']}"
+    if "tts" in config["tasks"]:
+        name += "_tts"
+        for tq in config["quantizer"]["tts"]:
+            name += f"_{tq['quantizer']}_{tq['n_codebooks']}"
 
     if len(config["text_data"]):
         name += f"_text"

@@ -1,0 +1,8 @@
+raw_data: "librispeech"
+prepared_data_path: "librispeech_quantized-speech"
+
+path_to_cache: ".."
+
+quantizer_config_path: "../audiotokenizer/speechtokenizer_hubert_avg_config.json"
+quantizer_ckpt_path: "../audiotokenizer/SpeechTokenizer.pt"
+quantizer_type: "speech"
