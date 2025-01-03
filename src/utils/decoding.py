@@ -89,9 +89,9 @@ def decode_audio_speech(
     if remainder:
         # pad if last frame is incomplete
         # zero padding is used now, for speechtokenizer using get_audio_padding_tokens is also possible
-        pad_tokens = torch.zeros(n_codebooks - remainder, device="cuda", dtype=torch.long)
+        pad_tokens = torch.zeros(1, n_codebooks - remainder, device="cuda", dtype=torch.long)
         audio_tokens = torch.cat(
-            [audio_tokens, pad_tokens[n_codebooks - remainder:]], dim=0
+            [audio_tokens, pad_tokens], dim=0
         )
 
     transposed = audio_tokens.view(-1, n_codebooks).t()
