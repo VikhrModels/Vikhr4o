@@ -281,7 +281,9 @@ if __name__ == "__main__":
         num_training_steps=max_train_steps * accelerator.num_processes,
     )
 
-    if checkpoint_path is not None and os.path.exists(os.path.join(checkpoint_path, "optimizer.pt")):
+    if checkpoint_path is not None and os.path.exists(
+        os.path.join(checkpoint_path, "optimizer.pt")
+    ):
         optim_state = torch.load(os.path.join(checkpoint_path, "optimizer.pt"))
         scheduler_state = torch.load(os.path.join(checkpoint_path, "scheduler.pt"))
 

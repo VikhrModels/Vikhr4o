@@ -86,7 +86,9 @@ def prepare_emilia(cache_dir) -> tuple[Dataset, Dataset]:
     repo_id = "amphion/Emilia-Dataset"
     file_list = [f"EN/EN-B{str(i).zfill(6)}.tar" for i in range(200)]
 
-    dataset = load_dataset(repo_id, data_files={"en": file_list}, split="en", cache_dir=cache_dir)
+    dataset = load_dataset(
+        repo_id, data_files={"en": file_list}, split="en", cache_dir=cache_dir
+    )
     shuffled = dataset.shuffle(seed=42)
     subset = shuffled.select(range(100_000))
     subset = subset.map(lambda row: {"text": row["json"]["text"]})
@@ -96,13 +98,13 @@ def prepare_emilia(cache_dir) -> tuple[Dataset, Dataset]:
 
 
 def download_clip(
-        video_identifier,
-        output_filename,
-        start_time,
-        end_time,
-        tmp_dir='/tmp/musiccaps',
-        num_attempts=5,
-        url_base='https://www.youtube.com/watch?v='
+    video_identifier,
+    output_filename,
+    start_time,
+    end_time,
+    tmp_dir="/tmp/musiccaps",
+    num_attempts=5,
+    url_base="https://www.youtube.com/watch?v=",
 ):
     status = False
 
@@ -113,8 +115,9 @@ def download_clip(
     attempts = 0
     while True:
         try:
-            output = subprocess.check_output(command, shell=True,
-                                             stderr=subprocess.STDOUT)
+            output = subprocess.check_output(
+                command, shell=True, stderr=subprocess.STDOUT
+            )
         except subprocess.CalledProcessError as err:
             attempts += 1
             if attempts == num_attempts:
@@ -124,11 +127,11 @@ def download_clip(
 
     # Check if the video was successfully saved.
     status = os.path.exists(output_filename)
-    return status, 'Downloaded'
+    return status, "Downloaded"
 
 
 def prepare_musiccaps(cache_dir: str) -> tuple[Dataset, Dataset]:
-    ds = load_dataset('google/MusicCaps', split='train')
+    ds = load_dataset("google/MusicCaps", split="train")
     sampling_rate = 44100
     limit = None
     num_proc, writer_batch_size = 16, 1000
@@ -147,14 +150,14 @@ def prepare_musiccaps(cache_dir: str) -> tuple[Dataset, Dataset]:
         if not os.path.exists(outfile_path):
             status = False
             status, log = download_clip(
-                example['ytid'],
+                example["ytid"],
                 outfile_path,
-                example['start_s'],
-                example['end_s'],
+                example["start_s"],
+                example["end_s"],
             )
 
-        example['audio'] = outfile_path
-        example['download_status'] = status
+        example["audio"] = outfile_path
+        example["download_status"] = status
         return example
 
     ds = ds.rename_column("caption", "text")
@@ -162,9 +165,11 @@ def prepare_musiccaps(cache_dir: str) -> tuple[Dataset, Dataset]:
         process,
         num_proc=num_proc,
         writer_batch_size=writer_batch_size,
-        keep_in_memory=False
+        keep_in_memory=False,
     )
-    ds = ds.filter(lambda x: x["download_status"]).cast_column('audio', Audio(sampling_rate=sampling_rate))
+    ds = ds.filter(lambda x: x["download_status"]).cast_column(
+        "audio", Audio(sampling_rate=sampling_rate)
+    )
 
     splits = ds.train_test_split(test_size=0.1, seed=42)
     return splits["train"], splits["test"]

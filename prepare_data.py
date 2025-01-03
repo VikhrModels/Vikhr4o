@@ -21,14 +21,16 @@ from src.utils.data import DATASET_2_LOAD_FUNCTION
 from src.utils.decoding import decode_audio_wav, decode_audio_speech, decode_audio_fish
 
 load_dotenv()
-hf_token = os.getenv('HF_TOKEN')
+hf_token = os.getenv("HF_TOKEN")
 
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
 parser.add_argument(
     "--config", type=str, help="Path to the config.yaml file", required=True
 )
 parser.add_argument(
-    "--debug", action="store_true", help="If set, example of reconstructed audio is saved",
+    "--debug",
+    action="store_true",
+    help="If set, example of reconstructed audio is saved",
 )
 args = parser.parse_args()
 
@@ -95,9 +97,10 @@ def quantize_fishtokenizer(row: dict[str, Any], quantizer: FishAudioTokenizer):
     audio_tokens = audio_tokens.cpu()
     semantic_tokens = semantic_tokens.cpu()
 
-    return {"audio_tokens": audio_tokens.numpy(),
-            "semantic_tokens": semantic_tokens.numpy()
-            }
+    return {
+        "audio_tokens": audio_tokens.numpy(),
+        "semantic_tokens": semantic_tokens.numpy(),
+    }
 
 
 def verify_decoding(example, quantizer, quantizer_type: str):
@@ -164,7 +167,10 @@ if __name__ == "__main__":
     train_dataset, val_dataset = DATASET_2_LOAD_FUNCTION[data](path_to_cache)
     hash_value = hashlib.md5(data.encode()).hexdigest()
 
-    print("Number of samples in dataset:", f"train - {len(train_dataset)}, val - {len(val_dataset)}")
+    print(
+        "Number of samples in dataset:",
+        f"train - {len(train_dataset)}, val - {len(val_dataset)}",
+    )
 
     if args.debug:
         verify_decoding(train_dataset[0], quantizer, quantizer_type)

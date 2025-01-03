@@ -18,9 +18,7 @@ def load_encoder(checkpoint_path, precision, is_agent=False):
     model = model.to(device=device, dtype=precision)
     print(f"Restored model from checkpoint")
 
-    decode_one_token = (
-        decode_one_token_ar_agent if is_agent else decode_one_token_ar
-    )
+    decode_one_token = decode_one_token_ar_agent if is_agent else decode_one_token_ar
     print("Using DualARTransformer")
 
     return model.eval(), decode_one_token
@@ -32,9 +30,8 @@ class FishAudioTokenizer:
         decoder_path: str,
         decoder_config: str,
         encoder_path: Optional[str] = None,
-        tokenizer_path: Optional[str] = None
+        tokenizer_path: Optional[str] = None,
     ) -> None:
-
         self.audio_tokenizer = load_vqgan(decoder_config, decoder_path)
         self.sample_rate = self.audio_tokenizer.spec_transform.sample_rate
 
@@ -43,7 +40,8 @@ class FishAudioTokenizer:
 
         if encoder_path is not None:
             self.semantic_tokenizer, self.decoding_f = load_encoder(
-                encoder_path, torch.bfloat16,
+                encoder_path,
+                torch.bfloat16,
             )
 
             with torch.device(device):
@@ -102,7 +100,7 @@ class FishAudioTokenizer:
         feature_lengths = torch.tensor([tokens.shape[1]], device=device)
 
         fake_audios, _ = self.audio_tokenizer.decode(
-          indices=tokens[None], feature_lengths=feature_lengths
+            indices=tokens[None], feature_lengths=feature_lengths
         )
 
         fake_audio = fake_audios[0].float().detach().cpu()
