@@ -1,5 +1,4 @@
 from datasets import load_dataset
-
 import torch
 from torch.utils.data import Dataset, ConcatDataset
 
@@ -16,7 +15,6 @@ class Vikhr4oDatasetBase(Dataset):
         else:
             self.n_codebooks = quantizer.tts_n_codebooks
 
-        self.max_seq_length = config["max_seq_length"]
         self.n_special_tokens = config["n_special_tokens"]
 
         self.soa = tokenizer(config["start_audio_token"], return_tensors="pt")[
@@ -44,45 +42,16 @@ class Vikhr4oDatasetBase(Dataset):
 
         if self.asr:
             audio_input_tokens = self.quantizer.quantize_asr(row)
-
-            audio_length = audio_input_tokens.shape[-1]
-            if audio_length > self.max_seq_length - 64:
-                audio_length = self.max_seq_length // 6 * 5
-
-            audio_length -= audio_length % self.n_codebooks
-            text_length = min(
-                self.max_seq_length - audio_length - self.n_special_tokens,
-                text_input_tokens.shape[-1],
-            )
-
         else:
             audio_input_tokens = self.quantizer.quantize_tts(row)
-
-            text_length = text_input_tokens.shape[-1]
-            if text_length > self.max_seq_length // 2:
-                text_length = self.max_seq_length // 2
-
-            audio_length = min(
-                self.max_seq_length - text_length - self.n_special_tokens,
-                audio_input_tokens.shape[-1],
-            )
-            audio_length -= audio_length % self.n_codebooks
-
-        padding_size = (
-            self.max_seq_length - text_length - audio_length - self.n_special_tokens
-        )
-        padding = torch.full(
-            (1, padding_size), self.tokenizer.pad_token_id, dtype=torch.int64
-        )
 
         if self.asr:
             tokens = torch.cat(
                 [
-                    padding,
                     self.soa,
-                    audio_input_tokens[:, :audio_length],
+                    audio_input_tokens,
                     self.eoa,
-                    text_input_tokens.squeeze(1)[:, :text_length],
+                    text_input_tokens.squeeze(1),
                     self.eos,
                 ],
                 dim=1,
@@ -90,23 +59,16 @@ class Vikhr4oDatasetBase(Dataset):
         else:
             tokens = torch.cat(
                 [
-                    padding,
-                    text_input_tokens.squeeze(1)[:, :text_length],
+                    text_input_tokens.squeeze(1),
                     self.soa,
-                    audio_input_tokens[:, :audio_length],
+                    audio_input_tokens,
                     self.eoa,
                     self.eos,
                 ],
                 dim=1,
             ).squeeze(0)
 
-        attention_mask = torch.cat(
-            [
-                torch.zeros(padding.shape),
-                torch.ones((1, self.max_seq_length - padding_size)),
-            ],
-            dim=1,
-        ).squeeze(0)
+        attention_mask = torch.ones(len(tokens))
 
         return {
             "input_ids": tokens,

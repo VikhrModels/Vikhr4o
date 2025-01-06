@@ -26,8 +26,16 @@ class AudioTokenizer:
         self.tts_config = quantizer_config["tts"]
         self.tokens_config = tokens_config
 
-        self.asr_n_codebooks = max([x["n_codebooks"] for x in quantizer_config["asr"]])
-        self.tts_n_codebooks = max([x["n_codebooks"] for x in quantizer_config["tts"]])
+        self.asr_n_codebooks = (
+            max([x["n_codebooks"] for x in quantizer_config["asr"]])
+            if len(quantizer_config["asr"])
+            else None
+        )
+        self.tts_n_codebooks = (
+            max([x["n_codebooks"] for x in quantizer_config["tts"]])
+            if len(quantizer_config["tts"])
+            else None
+        )
 
     def quantize(self, row, quantizer):
         if quantizer["quantizer"] == "speech":
