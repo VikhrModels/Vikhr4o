@@ -8,12 +8,11 @@ from dotenv import load_dotenv
 import wandb
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
-    default_data_collator,
     get_scheduler,
 )
 from accelerate import (
@@ -24,7 +23,7 @@ from accelerate import (
 
 from src.data import load_data
 from src.tokenizer import AudioTokenizer, get_start_tokens
-from src.utils import save_checkpoint, get_exp_name
+from src.utils.training import save_checkpoint, get_exp_name, collate_fn
 
 # Parse arguments
 parser = argparse.ArgumentParser(description="Train a model with configuration.")
@@ -49,6 +48,7 @@ end_audio_token = config["end_audio_token"]
 path_to_cache = config["path_to_cache"]
 checkpointing_steps = int(config["checkpointing_steps"])
 
+max_seq_length = int(config["max_seq_length"])
 max_grad_norm = float(config["max_grad_norm"])
 freeze_params = config["freeze"]
 
@@ -75,49 +75,52 @@ def train(
     acc_loss = 0
 
     for step, batch in enumerate(dataloader):
-        with accelerator.accumulate(model):
-            # Forward pass
-            outputs = model(**batch)
-            loss = outputs.loss
+        try:
+            with accelerator.accumulate(model):
+                # Forward pass
+                outputs = model(**batch)
+                loss = outputs.loss
 
-            last_loss = loss.detach().float()
-            total_loss += last_loss
-            acc_loss += last_loss
+                last_loss = loss.detach().float()
+                total_loss += last_loss
+                acc_loss += last_loss
 
-            accelerator.backward(loss)
+                accelerator.backward(loss)
 
-            del batch, loss, outputs
-            torch.cuda.empty_cache()
+                del batch, loss, outputs
+                torch.cuda.empty_cache()
 
-        if accelerator.sync_gradients:
-            accelerator.clip_grad_norm_(model.parameters(), max_grad_norm)
+            if accelerator.sync_gradients:
+                accelerator.clip_grad_norm_(model.parameters(), max_grad_norm)
 
-            optimizer.step()
-            lr_scheduler.step()
-            optimizer.zero_grad()
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
 
-            progress_bar.update(1)
-            completed_steps += 1
+                progress_bar.update(1)
+                completed_steps += 1
 
-            acc_loss = acc_loss / int(config["gradient_accumulation_steps"])
-            accelerator.log({"loss": acc_loss.item()})
-            acc_loss = 0
+                acc_loss = acc_loss / int(config["gradient_accumulation_steps"])
+                accelerator.log({"loss": acc_loss.item()})
+                acc_loss = 0
 
-            if completed_steps % checkpointing_steps == 0:
-                save_checkpoint(
-                    model,
-                    accelerator,
-                    tokenizer,
-                    optimizer,
-                    lr_scheduler,
-                    save_dir,
-                    checkpointing_steps,
-                )
+                if completed_steps % checkpointing_steps == 0:
+                    save_checkpoint(
+                        model,
+                        accelerator,
+                        tokenizer,
+                        optimizer,
+                        lr_scheduler,
+                        save_dir,
+                        checkpointing_steps,
+                    )
 
-            torch.cuda.empty_cache()
+                torch.cuda.empty_cache()
 
-        if completed_steps >= max_train_steps:
-            break
+            if completed_steps >= max_train_steps:
+                break
+        except:
+            print(batch["input_ids"].shape)
 
     return total_loss / len(dataloader), completed_steps
 
@@ -166,6 +169,7 @@ def eval(
     }
 
     accelerator.log(base_log, step=completed_steps)
+    del losses, eval_loss
 
 
 if __name__ == "__main__":
@@ -231,16 +235,17 @@ if __name__ == "__main__":
 
     model.resize_token_embeddings(n_tokens + codebook_size)
 
+    sampler = RandomSampler(data_source=train_dataset, replacement=True)
     train_dataloader = DataLoader(
         train_dataset,
-        shuffle=True,
-        collate_fn=default_data_collator,
+        sampler=sampler,
+        collate_fn=lambda x: collate_fn(x, tokenizer, max_seq_length),
         batch_size=int(config["train_batch_size"]),
         num_workers=16,
     )
     eval_dataloader = DataLoader(
         val_dataset,
-        collate_fn=default_data_collator,
+        collate_fn=lambda x: collate_fn(x, tokenizer, max_seq_length),
         batch_size=int(config["eval_batch_size"]),
         num_workers=16,
     )
@@ -281,11 +286,17 @@ if __name__ == "__main__":
         num_training_steps=max_train_steps * accelerator.num_processes,
     )
 
-    if checkpoint_path is not None and os.path.exists(
-        os.path.join(checkpoint_path, "optimizer.pt")
+    if (
+        False
+        and checkpoint_path is not None
+        and os.path.exists(os.path.join(checkpoint_path, "optimizer.pt"))
     ):
-        optim_state = torch.load(os.path.join(checkpoint_path, "optimizer.pt"))
-        scheduler_state = torch.load(os.path.join(checkpoint_path, "scheduler.pt"))
+        optim_state = torch.load(
+            os.path.join(checkpoint_path, "optimizer.pt"), map_location="cpu"
+        )
+        scheduler_state = torch.load(
+            os.path.join(checkpoint_path, "scheduler.pt"), map_location="cpu"
+        )
 
         optimizer.load_state_dict(optim_state)
         lr_scheduler.load_state_dict(scheduler_state)
