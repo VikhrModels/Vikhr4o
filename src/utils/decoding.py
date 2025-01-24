@@ -92,7 +92,7 @@ def decode_audio_speech(
         tokens, start_audio_token_id, end_audio_token_id
     )
 
-    # substract length of original vocabulary -> tokens in range [0, 1024)
+    # subtract length of original vocabulary -> tokens in range [0, 1024)
     audio_tokens = tokens[start:end] % n_original_tokens
     remainder = audio_tokens.shape[-1] % n_codebooks
 
