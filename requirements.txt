@@ -2,7 +2,8 @@ accelerate==0.33.0
 beartype==0.18.5
 datasets==2.20.0
 descript-audiotools==0.7.2
+python-dotenv==1.0.1
 speechtokenizer==1.0.1
 tqdm==4.66.5
-wandb==0.17.6
 transformers==4.44.0
+wandb==0.17.6
