@@ -2,6 +2,9 @@ import os
 
 import torch
 
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp.fully_sharded_data_parallel import StateDictType
+
 
 def freeze(
     model,
@@ -62,12 +65,23 @@ def save_checkpoint(
         save_dir, f"checkpoint-{get_last_checkpoint(save_dir) * checkpointing_steps}"
     )
 
-    unwrapped_model = accelerator.unwrap_model(model)
-    unwrapped_model.save_pretrained(
-        path,
-        is_main_process=accelerator.is_main_process,
-        safe_serialization=False,
-    )
+    if accelerator.is_main_process:
+        os.makedirs(path, exist_ok=True)
+
+    if isinstance(model, FSDP):
+        with FSDP.state_dict_type(
+            model, StateDictType.FULL_STATE_DICT
+        ):
+            state_dict = model.state_dict()
+            if accelerator.is_main_process:
+                torch.save(state_dict, os.path.join(path, "pytorch_model.bin"))
+    else:
+        unwrapped_model = accelerator.unwrap_model(model)
+        unwrapped_model.save_pretrained(
+            path,
+            is_main_process=accelerator.is_main_process,
+            safe_serialization=False,
+        )
     if accelerator.is_main_process:
         tokenizer.save_pretrained(path)
         torch.save(optimizer.state_dict(), os.path.join(path, "optimizer.pt"))
